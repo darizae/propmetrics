@@ -1,0 +1,66 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+
+# Python cache and build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg
+build/
+dist/
+.eggs/
+
+# Logs
+*.log
+logs/
+*.out
+*.err
+
+# Environment files
+.env
+.env.local
+.envrc
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE/editor cruft
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test/coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+pytest_cache/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+.pyre/
+
+# Data directories (local-only artifacts)
+data/
+!data/.gitkeep
+
+# Optional: keep schema contracts and example envs
+!sources/nyc_rolling_sales_sources.json
+!.env.example
+
+# Parquet/arrow/duckdb outputs
+*.parquet
+*.arrow
+*.feather
+*.duckdb
+
+# Temporary download fragments
+*.part
