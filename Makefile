@@ -8,7 +8,7 @@ fetch:
 	. .venv/bin/activate; python -m app.etl.nyc_fetch all
 
 normalize:
-	. .venv/bin/activate; python -m app.etl.nyc_normalize run
+	. .venv/bin/activate; python -m app.etl.nyc_normalize
 
 test:
 	. .venv/bin/activate; python -m pytest -q

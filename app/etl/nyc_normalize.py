@@ -39,26 +39,75 @@ def _latest_snapshot_dir(raw_root: Path, borough: str) -> Path:
     return snaps[0]
 
 
+def _norm(s: str) -> str:
+    import re
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
+    s = re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_").lower()
+    return s
+
+
+_REQUIRED_FOR_HEADER = {
+    "neighborhood", "building_class_category", "sale_price", "gross_square_feet", "sale_date"
+}
+
+
+def _find_header_row_excel(path: Path, engine: str = "openpyxl", max_rows: int = 50) -> int | None:
+    import pandas as pd
+    probe = pd.read_excel(path, header=None, nrows=max_rows, dtype=str, engine=engine)
+    for i in range(len(probe)):
+        row = probe.iloc[i].tolist()
+        norm = {_norm(str(x)) for x in row if pd.notna(x)}
+        if _REQUIRED_FOR_HEADER.issubset(norm):
+            return i
+    return None
+
+
 def _read_any(path: Path) -> pd.DataFrame:
+    import pandas as pd
     ext = path.suffix.lower()
     if ext in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
-        return pd.read_excel(path, dtype=str, engine="openpyxl")
+        hdr = _find_header_row_excel(path, engine="openpyxl")
+        return pd.read_excel(path, header=hdr if hdr is not None else 0, dtype=str, engine="openpyxl")
     if ext == ".xls":
-        return pd.read_excel(path, dtype=str, engine="xlrd")
+        hdr = _find_header_row_excel(path, engine="xlrd")
+        return pd.read_excel(path, header=hdr if hdr is not None else 0, dtype=str, engine="xlrd")
     if ext == ".csv":
-        return pd.read_csv(path, dtype=str)
+        # CSVs are rare; do a tiny header sniff too
+        probe = pd.read_csv(path, header=None, nrows=50, dtype=str)
+        hdr = None
+        for i in range(len(probe)):
+            row = probe.iloc[i].tolist()
+            norm = {_norm(str(x)) for x in row if pd.notna(x)}
+            if _REQUIRED_FOR_HEADER.issubset(norm):
+                hdr = i
+                break
+        return pd.read_csv(path, header=hdr if hdr is not None else 0, dtype=str)
     raise SystemExit(f"Unsupported extension: {ext}")
 
 
 def _colmap(df_cols: list[str]) -> Dict[str, str]:
-    norm = {snake(c): c for c in df_cols}
+    norm = {_norm(c): c for c in df_cols}  # normalized -> original text
     mapping: Dict[str, str] = {}
+    found: set[str] = set()
+
+    HEADER_ALIASES = {
+        "borough": {"borough"},
+        "neighborhood": {"neighborhood", "neighbourhood"},
+        "building_class_category": {"building_class_category", "buildingclasscategory"},
+        "sale_price": {"sale_price", "saleprice", "sale_price__", "sale_price_$"},
+        "gross_square_feet": {"gross_square_feet", "gross_sq_ft", "grosssquarefeet", "gross_sq_feet", "gross_sq_ft_",
+                              "gross_sq_ft__"},
+        "sale_date": {"sale_date", "saledate", "sale_date_"},
+    }
+
     for canon, aliases in HEADER_ALIASES.items():
-        for k, orig in norm.items():
-            if k == canon or k in aliases:
-                mapping[canon] = orig
+        for nk, orig in norm.items():
+            if nk == canon or nk in aliases:
+                mapping[orig] = canon
+                found.add(canon)
                 break
-    missing = [c for c in CANON.keys() if c not in mapping and c != "price_per_sqft"]
+
+    missing = [c for c in CANON.keys() if c != "price_per_sqft" and c not in found]
     if missing:
         raise SystemExit(f"Missing required columns: {missing}")
     return mapping
