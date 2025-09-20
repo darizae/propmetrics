@@ -1,16 +1,25 @@
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-from contextlib import asynccontextmanager
-from typing import Dict, Any
 import io
+import json
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Dict, Any
+
 import pandas as pd
+from dotenv import load_dotenv
+from fastapi import FastAPI, Response, Request
+from fastapi.responses import StreamingResponse
+
+from app.cache.redis_cache import get_cache, spec_cache_key
+from app.core.utils import env
 from app.db.duck import get_con, init_duck
-from app.query.spec import QuerySpec
 from app.query.planner import build_sql
+from app.query.spec import QuerySpec
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    load_dotenv()
+    app.state.cache = get_cache()
     init_duck()
     yield
 
@@ -19,7 +28,17 @@ app = FastAPI(title="propmetrics", version="0.1", lifespan=lifespan)
 
 
 @app.post("/aggregate")
-def aggregate(spec: QuerySpec) -> Dict[str, Any]:
+def aggregate(spec: QuerySpec, response: Response, request: Request) -> Dict[str, Any]:
+    cache = getattr(request.app.state, "cache", None)
+    cache_ok = bool(cache and cache.healthy())
+
+    if cache_ok:
+        key = spec_cache_key("agg", spec)
+        cached = cache.get(key)
+        if cached:
+            response.headers["x-cache"] = "hit"
+            return json.loads(cached)
+
     sql, params, echo = build_sql(spec)
     con = get_con()
     df: pd.DataFrame = con.execute(sql, params).df()
@@ -45,11 +64,30 @@ def aggregate(spec: QuerySpec) -> Dict[str, Any]:
         "data": data,
         "notes": "metrics computed in DuckDB; medians ignore NULLs"
     }
+
+    if cache_ok:
+        cache.set(key, json.dumps(out).encode("utf-8"))
+        response.headers["x-cache"] = "miss"
+    else:
+        response.headers["x-cache"] = "bypass"
+
     return out
 
 
 @app.post("/download")
-def download(spec: QuerySpec):
+def download(spec: QuerySpec, request: Request):
+    cache = getattr(request.app.state, "cache", None)
+    cache_ok = bool(cache and cache.healthy())
+    key = spec_cache_key("csv", spec) if cache_ok else None
+
+    if cache_ok:
+        cached = cache.get(key)
+        if cached:
+            resp = StreamingResponse(iter([cached]), media_type="text/csv")
+            resp.headers["Content-Disposition"] = 'attachment; filename="aggregate.csv"'
+            resp.headers["x-cache"] = "hit"
+            return resp
+
     sql, params, _ = build_sql(spec)
     con = get_con()
     df: pd.DataFrame = con.execute(sql, params).df()
@@ -57,7 +95,55 @@ def download(spec: QuerySpec):
         df["month"] = pd.to_datetime(df["month"]).dt.strftime("%Y-%m-%d")
     buf = io.StringIO()
     df.to_csv(buf, index=False)
-    buf.seek(0)
-    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={
-        "Content-Disposition": 'attachment; filename="aggregate.csv"'
-    })
+    csv_bytes = buf.getvalue().encode("utf-8")
+
+    resp = StreamingResponse(iter([csv_bytes]), media_type="text/csv")
+    resp.headers["Content-Disposition"] = 'attachment; filename="aggregate.csv"'
+    if cache_ok:
+        cache.set(key, csv_bytes)
+        resp.headers["x-cache"] = "miss"
+    else:
+        resp.headers["x-cache"] = "bypass"
+    return resp
+
+
+@app.get("/health")
+def health(request: Request) -> Dict[str, Any]:
+    data_dir = Path(env("DATA_DIR"))
+    meta_dir = data_dir / "meta" / "nyc_rolling_sales"
+    schema_fp = None
+    if (meta_dir / "schema.json").exists():
+        sj = json.loads((meta_dir / "schema.json").read_text())
+        schema_fp = sj.get("fingerprint")
+
+    summary = {}
+    summary_path = data_dir / "parquet" / "nyc_rolling_sales" / "SUMMARY.json"
+    if summary_path.exists():
+        summary = json.loads(summary_path.read_text())
+
+    raw_root = data_dir / "raw" / "nyc_rolling_sales"
+    boroughs = {}
+    if raw_root.exists():
+        for bdir in sorted([p for p in raw_root.iterdir() if p.is_dir()]):
+            snaps = sorted([p for p in bdir.iterdir() if p.is_dir()], reverse=True)
+            latest = snaps[0].name if snaps else None
+            fetched_at = None
+            if snaps and (snaps[0] / "metadata.json").exists():
+                md = json.loads((snaps[0] / "metadata.json").read_text())
+                fetched_at = md.get("fetched_at_utc")
+            boroughs[bdir.name] = {"latest_snapshot": latest, "fetched_at_utc": fetched_at}
+
+    cache = getattr(request.app.state, "cache", None)
+    enabled = bool(cache and cache.client is not None)
+    healthy = bool(cache and cache.healthy())
+    return {
+        "status": "ok",
+        "dataset": "nyc_rolling_sales",
+        "schema_fingerprint": schema_fp,
+        "rows": summary.get("rows"),
+        "cache": {
+            "enabled": enabled,
+            "healthy": healthy
+        },
+        "boroughs": boroughs
+    }
