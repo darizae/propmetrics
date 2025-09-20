@@ -10,5 +10,10 @@ fetch:
 normalize:
 	. .venv/bin/activate; python -m app.etl.nyc_normalize
 
+
+serve:
+	. .venv/bin/activate; uvicorn app.api.main:app --reload --port 8000
+
+
 test:
 	. .venv/bin/activate; python -m pytest -q
