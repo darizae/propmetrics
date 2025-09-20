@@ -64,3 +64,5 @@ data/
 
 # Temporary download fragments
 *.part
+
+aggregate.csv
