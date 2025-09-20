@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from contextlib import asynccontextmanager
 from typing import Dict, Any
 import io
 import pandas as pd
@@ -7,12 +8,14 @@ from app.db.duck import get_con, init_duck
 from app.query.spec import QuerySpec
 from app.query.planner import build_sql
 
-app = FastAPI(title="propmetrics", version="0.1")
 
-
-@app.on_event("startup")
-def _startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_duck()
+    yield
+
+
+app = FastAPI(title="propmetrics", version="0.1", lifespan=lifespan)
 
 
 @app.post("/aggregate")
@@ -21,11 +24,9 @@ def aggregate(spec: QuerySpec) -> Dict[str, Any]:
     con = get_con()
     df: pd.DataFrame = con.execute(sql, params).df()
 
-    # Column order: keys first (if present), then metrics
     key_cols = []
     if spec.groupby == "month":
         key_cols = ["month"]
-        # stringify month to ISO date (YYYY-MM-01)
         if "month" in df.columns:
             df["month"] = pd.to_datetime(df["month"]).dt.strftime("%Y-%m-%d")
     elif spec.groupby == "neighborhood":
