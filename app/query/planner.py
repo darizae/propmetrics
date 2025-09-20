@@ -6,23 +6,19 @@ def build_sql(spec: QuerySpec) -> Tuple[str, List[Any], Dict[str, Any]]:
     where: List[str] = []
     params: List[Any] = []
 
-    # Date range filter (inclusive)
     where.append("CAST(sale_date AS DATE) BETWEEN ? AND ?")
     params.extend([spec.date_range.start.isoformat(), spec.date_range.end.isoformat()])
 
-    # Borough filter (values are lowercase in the dataset)
     if spec.borough:
         ph = ",".join(["?"] * len(spec.borough))
         where.append(f"borough IN ({ph})")
         params.extend([b.lower() for b in spec.borough])
 
-    # Neighborhood filter (case-sensitive in source; normalize to lower)
     if spec.neighborhood:
         ph = ",".join(["?"] * len(spec.neighborhood))
         where.append(f"lower(neighborhood) IN ({ph})")
         params.extend([n.lower() for n in spec.neighborhood])
 
-    # Building class category filter (exact match)
     if spec.building_class_category:
         ph = ",".join(["?"] * len(spec.building_class_category))
         where.append(f"building_class_category IN ({ph})")
@@ -30,30 +26,29 @@ def build_sql(spec: QuerySpec) -> Tuple[str, List[Any], Dict[str, Any]]:
 
     where_sql = " AND ".join(where) if where else "TRUE"
 
-    # Grouping
-    group_cols: List[str] = []
+    src_select_cols = [
+        "borough",
+        "neighborhood",
+        "building_class_category",
+        "sale_price",
+        "price_per_sqft",
+        "sale_date",
+    ]
     select_keys: List[str] = []
+    order_by = ""
 
     if spec.groupby == "month":
-        group_cols.append("date_trunc('month', CAST(sale_date AS DATE)) AS month")
+        src_select_cols.append("date_trunc('month', CAST(sale_date AS DATE)) AS month")
         select_keys.append("month")
         order_by = "ORDER BY month"
     elif spec.groupby == "neighborhood":
-        group_cols.append("neighborhood")
         select_keys.append("neighborhood")
         order_by = "ORDER BY neighborhood"
     elif spec.groupby == "class":
-        group_cols.append("building_class_category")
         select_keys.append("building_class_category")
         order_by = "ORDER BY building_class_category"
-    else:
-        order_by = ""
 
-    group_expr = ""
-    group_by_clause = ""
-    if group_cols:
-        group_expr = ", " + ", ".join(select_keys)
-        group_by_clause = "GROUP BY " + ", ".join(select_keys)
+    group_by_clause = f"GROUP BY {', '.join(select_keys)}" if select_keys else ""
 
     metrics = """
         COUNT(*) AS txns,
@@ -62,20 +57,16 @@ def build_sql(spec: QuerySpec) -> Tuple[str, List[Any], Dict[str, Any]]:
         MEDIAN(price_per_sqft) AS median_price_per_sqft
     """
 
+    key_select = (", " + ", ".join(select_keys)) if select_keys else ""
+
     sql = f"""
     WITH src AS (
-        SELECT
-            borough,
-            neighborhood,
-            building_class_category,
-            sale_price,
-            price_per_sqft,
-            sale_date
+        SELECT {", ".join(src_select_cols)}
         FROM nyc
         WHERE {where_sql}
     )
     SELECT
-        {metrics.strip()}{group_expr}
+        {metrics.strip()}{key_select}
     FROM src
     {group_by_clause}
     {order_by}
