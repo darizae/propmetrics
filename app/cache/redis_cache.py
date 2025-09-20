@@ -1,6 +1,6 @@
 import os, hashlib
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List
 import orjson
 
 try:
@@ -44,19 +44,67 @@ class Cache:
             return False
 
 
+def _try_ping(client: Any) -> bool:
+    try:
+        return bool(client.ping())
+    except Exception:
+        return False
+
+
 def get_cache() -> Cache:
-    url = os.getenv("REDIS_URL", "")
+    url = os.getenv("REDIS_URL", "").strip()
     ttl = int(os.getenv("CACHE_TTL_SECONDS", "86400"))
     client = None
+
     if url.startswith("fakeredis://"):
         if fakeredis:
             client = fakeredis.FakeRedis()
     elif url and redis:
-        client = redis.from_url(url)
+        candidate = redis.from_url(url)
+        if _try_ping(candidate):
+            client = candidate
+        else:
+            client = None
+
     return Cache(client=client, ttl=ttl)
 
 
+def _lower_sorted(xs: Optional[List[str]]) -> Optional[List[str]]:
+    if xs is None:
+        return None
+    return sorted([x.lower() for x in xs])
+
+
+def _sorted_keepcase(xs: Optional[List[str]]) -> Optional[List[str]]:
+    if xs is None:
+        return None
+    return sorted(xs)
+
+
+def canonical_spec_dict(spec_model) -> Dict[str, Any]:
+    if hasattr(spec_model, "model_dump"):
+        d = spec_model.model_dump(exclude_none=True)
+    else:
+        d = dict(spec_model)
+
+    dr = d.get("date_range") or {}
+    start = dr.get("start")
+    end = dr.get("end")
+    # handle date objects or strings
+    start_iso = start.isoformat() if hasattr(start, "isoformat") else str(start)
+    end_iso = end.isoformat() if hasattr(end, "isoformat") else str(end)
+
+    out: Dict[str, Any] = {
+        "date_range": {"start": start_iso, "end": end_iso},
+        "groupby": d.get("groupby", "none"),
+        "borough": _lower_sorted(d.get("borough")),
+        "neighborhood": _lower_sorted(d.get("neighborhood")),
+        "building_class_category": _sorted_keepcase(d.get("building_class_category")),
+    }
+    return out
+
+
 def spec_cache_key(prefix: str, spec_model) -> str:
-    payload = orjson.dumps(spec_model.model_dump(exclude_none=True), option=orjson.OPT_SORT_KEYS)
+    payload = orjson.dumps(canonical_spec_dict(spec_model), option=orjson.OPT_SORT_KEYS)
     h = hashlib.sha256(payload).hexdigest()
     return f"pm:v1:{prefix}:{h}"

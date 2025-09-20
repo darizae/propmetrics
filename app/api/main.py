@@ -1,17 +1,19 @@
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import StreamingResponse
+import io
+import json
 from contextlib import asynccontextmanager
-from typing import Dict, Any
 from pathlib import Path
-import io, json
+from typing import Dict, Any
+
 import pandas as pd
 from dotenv import load_dotenv
+from fastapi import FastAPI, Response, Request
+from fastapi.responses import StreamingResponse
 
-from app.db.duck import get_con, init_duck
-from app.query.spec import QuerySpec
-from app.query.planner import build_sql
 from app.cache.redis_cache import get_cache, spec_cache_key
 from app.core.utils import env
+from app.db.duck import get_con, init_duck
+from app.query.planner import build_sql
+from app.query.spec import QuerySpec
 
 
 @asynccontextmanager
@@ -28,12 +30,14 @@ app = FastAPI(title="propmetrics", version="0.1", lifespan=lifespan)
 @app.post("/aggregate")
 def aggregate(spec: QuerySpec, response: Response, request: Request) -> Dict[str, Any]:
     cache = getattr(request.app.state, "cache", None)
+    cache_ok = bool(cache and cache.healthy())
 
-    key = spec_cache_key("agg", spec)
-    cached = cache.get(key) if cache else None
-    if cached:
-        response.headers["x-cache"] = "hit"
-        return json.loads(cached)
+    if cache_ok:
+        key = spec_cache_key("agg", spec)
+        cached = cache.get(key)
+        if cached:
+            response.headers["x-cache"] = "hit"
+            return json.loads(cached)
 
     sql, params, echo = build_sql(spec)
     con = get_con()
@@ -61,23 +65,28 @@ def aggregate(spec: QuerySpec, response: Response, request: Request) -> Dict[str
         "notes": "metrics computed in DuckDB; medians ignore NULLs"
     }
 
-    if cache:
+    if cache_ok:
         cache.set(key, json.dumps(out).encode("utf-8"))
         response.headers["x-cache"] = "miss"
+    else:
+        response.headers["x-cache"] = "bypass"
+
     return out
 
 
 @app.post("/download")
 def download(spec: QuerySpec, request: Request):
     cache = getattr(request.app.state, "cache", None)
+    cache_ok = bool(cache and cache.healthy())
+    key = spec_cache_key("csv", spec) if cache_ok else None
 
-    key = spec_cache_key("csv", spec)
-    cached = cache.get(key) if cache else None
-    if cached:
-        resp = StreamingResponse(iter([cached]), media_type="text/csv")
-        resp.headers["Content-Disposition"] = 'attachment; filename="aggregate.csv"'
-        resp.headers["x-cache"] = "hit"
-        return resp
+    if cache_ok:
+        cached = cache.get(key)
+        if cached:
+            resp = StreamingResponse(iter([cached]), media_type="text/csv")
+            resp.headers["Content-Disposition"] = 'attachment; filename="aggregate.csv"'
+            resp.headers["x-cache"] = "hit"
+            return resp
 
     sql, params, _ = build_sql(spec)
     con = get_con()
@@ -88,11 +97,13 @@ def download(spec: QuerySpec, request: Request):
     df.to_csv(buf, index=False)
     csv_bytes = buf.getvalue().encode("utf-8")
 
-    if cache:
-        cache.set(key, csv_bytes)
     resp = StreamingResponse(iter([csv_bytes]), media_type="text/csv")
     resp.headers["Content-Disposition"] = 'attachment; filename="aggregate.csv"'
-    resp.headers["x-cache"] = "miss"
+    if cache_ok:
+        cache.set(key, csv_bytes)
+        resp.headers["x-cache"] = "miss"
+    else:
+        resp.headers["x-cache"] = "bypass"
     return resp
 
 
@@ -123,14 +134,16 @@ def health(request: Request) -> Dict[str, Any]:
             boroughs[bdir.name] = {"latest_snapshot": latest, "fetched_at_utc": fetched_at}
 
     cache = getattr(request.app.state, "cache", None)
+    enabled = bool(cache and cache.client is not None)
+    healthy = bool(cache and cache.healthy())
     return {
         "status": "ok",
         "dataset": "nyc_rolling_sales",
         "schema_fingerprint": schema_fp,
         "rows": summary.get("rows"),
         "cache": {
-            "enabled": cache.client is not None if cache else False,
-            "healthy": cache.healthy() if cache else False,
+            "enabled": enabled,
+            "healthy": healthy
         },
         "boroughs": boroughs
     }
