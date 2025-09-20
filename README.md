@@ -23,3 +23,17 @@ Commands
 - make install
 - make serve
 - curl -s http://127.0.0.1:8000/aggregate -H 'content-type: application/json' -d '{"date_range":{"start":"1990-01-01","end":"2030-12-31"},"groupby":"month"}' | jq .
+
+---
+
+Day 3 targets
+- Redis cache for /aggregate and /download (key = SHA256 of canonical QuerySpec). X-Cache: miss|hit header.
+- /health -> {status, dataset, schema_fingerprint, rows, cache{enabled,healthy}, boroughs{<b>: {latest_snapshot,fetched_at_utc}}}
+- Tests: cache hit; health shape; coercion invariants; median semantics; golden-dataset integration.
+
+Commands
+- make install
+- export REDIS_URL=fakeredis://   # for tests without a Redis server
+- make test
+- make serve
+- curl -s http://127.0.0.1:8000/health | jq

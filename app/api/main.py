@@ -1,23 +1,23 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 from pathlib import Path
 import io, json
 import pandas as pd
+from dotenv import load_dotenv
 
 from app.db.duck import get_con, init_duck
 from app.query.spec import QuerySpec
 from app.query.planner import build_sql
 from app.cache.redis_cache import get_cache, spec_cache_key
 from app.core.utils import env
-from dotenv import load_dotenv
-
-cache = get_cache()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    load_dotenv()
+    app.state.cache = get_cache()
     init_duck()
     yield
 
@@ -26,9 +26,11 @@ app = FastAPI(title="propmetrics", version="0.1", lifespan=lifespan)
 
 
 @app.post("/aggregate")
-def aggregate(spec: QuerySpec, response: Response) -> Dict[str, Any]:
+def aggregate(spec: QuerySpec, response: Response, request: Request) -> Dict[str, Any]:
+    cache = getattr(request.app.state, "cache", None)
+
     key = spec_cache_key("agg", spec)
-    cached = cache.get(key)
+    cached = cache.get(key) if cache else None
     if cached:
         response.headers["x-cache"] = "hit"
         return json.loads(cached)
@@ -58,19 +60,24 @@ def aggregate(spec: QuerySpec, response: Response) -> Dict[str, Any]:
         "data": data,
         "notes": "metrics computed in DuckDB; medians ignore NULLs"
     }
-    cache.set(key, json.dumps(out).encode("utf-8"))
-    response.headers["x-cache"] = "miss"
+
+    if cache:
+        cache.set(key, json.dumps(out).encode("utf-8"))
+        response.headers["x-cache"] = "miss"
     return out
 
 
 @app.post("/download")
-def download(spec: QuerySpec, response: Response):
+def download(spec: QuerySpec, request: Request):
+    cache = getattr(request.app.state, "cache", None)
+
     key = spec_cache_key("csv", spec)
-    cached = cache.get(key)
+    cached = cache.get(key) if cache else None
     if cached:
-        response.headers["x-cache"] = "hit"
-        return StreamingResponse(iter([cached]), media_type="text/csv",
-                                 headers={"Content-Disposition": 'attachment; filename="aggregate.csv"'})
+        resp = StreamingResponse(iter([cached]), media_type="text/csv")
+        resp.headers["Content-Disposition"] = 'attachment; filename="aggregate.csv"'
+        resp.headers["x-cache"] = "hit"
+        return resp
 
     sql, params, _ = build_sql(spec)
     con = get_con()
@@ -80,15 +87,17 @@ def download(spec: QuerySpec, response: Response):
     buf = io.StringIO()
     df.to_csv(buf, index=False)
     csv_bytes = buf.getvalue().encode("utf-8")
-    cache.set(key, csv_bytes)
-    response.headers["x-cache"] = "miss"
-    return StreamingResponse(iter([csv_bytes]), media_type="text/csv",
-                             headers={"Content-Disposition": 'attachment; filename="aggregate.csv"'})
+
+    if cache:
+        cache.set(key, csv_bytes)
+    resp = StreamingResponse(iter([csv_bytes]), media_type="text/csv")
+    resp.headers["Content-Disposition"] = 'attachment; filename="aggregate.csv"'
+    resp.headers["x-cache"] = "miss"
+    return resp
 
 
 @app.get("/health")
-def health() -> Dict[str, Any]:
-    load_dotenv()
+def health(request: Request) -> Dict[str, Any]:
     data_dir = Path(env("DATA_DIR"))
     meta_dir = data_dir / "meta" / "nyc_rolling_sales"
     schema_fp = None
@@ -113,14 +122,15 @@ def health() -> Dict[str, Any]:
                 fetched_at = md.get("fetched_at_utc")
             boroughs[bdir.name] = {"latest_snapshot": latest, "fetched_at_utc": fetched_at}
 
+    cache = getattr(request.app.state, "cache", None)
     return {
         "status": "ok",
         "dataset": "nyc_rolling_sales",
         "schema_fingerprint": schema_fp,
         "rows": summary.get("rows"),
         "cache": {
-            "enabled": cache.client is not None,
-            "healthy": cache.healthy()
+            "enabled": cache.client is not None if cache else False,
+            "healthy": cache.healthy() if cache else False,
         },
         "boroughs": boroughs
     }
