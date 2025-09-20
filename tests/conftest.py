@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("DATA_DIR", "./data")
+os.environ.setdefault("REDIS_URL", "fakeredis://")
 
 from app.api.main import app  # noqa: E402
 
