@@ -1,34 +1,25 @@
-"""
-Export a minimal Actions-ready OpenAPI spec for tool use.
-Keeps only /aggregate and /download. Writes actions/openapi.yaml.
-"""
+import os
+import sys
+import yaml
+from app.api.main import app
 from pathlib import Path
 
-import os
-import yaml
-
-from app.api.main import app
-
-os.environ.setdefault("DATA_DIR", "./data")
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def main():
-    raw = app.openapi()  # dict
-    # Retain only analytics endpoints
+    raw = app.openapi()
     paths = raw.get("paths", {})
     keep = {k: v for k, v in paths.items() if k in ("/aggregate", "/download")}
     raw["paths"] = keep
-
-    # Slim description for Actions
     raw["info"]["title"] = "propmetrics-tools"
     raw["info"]["description"] = (
-        "Tool-only API for computing aggregates over NYC rolling sales Parquet. "
-        "Return numbers and small tables; no prose."
+        "Tool-only API for computing aggregates over NYC rolling sales Parquet. Return numbers; no prose."
     )
-    # Optional server hint for local/dev
     raw["servers"] = [{"url": os.getenv("SERVER_URL", "http://localhost:8000")}]
-
-    outdir = Path("actions")
+    outdir = ROOT / "actions"
     outdir.mkdir(parents=True, exist_ok=True)
     out = outdir / "openapi.yaml"
     with out.open("w") as f:

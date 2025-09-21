@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal, Union
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
 
@@ -15,26 +15,14 @@ class QuerySpecModel(BaseModel):
     groupby: Literal["none", "month", "neighborhood", "class"] = "none"
 
 
-class AggregateRowBase(BaseModel):
+class AggregateRow(BaseModel):
+    month: Optional[str] = None
+    neighborhood: Optional[str] = None
+    building_class_category: Optional[str] = None
     txns: int
     total_sale_price: Optional[float] = None
     median_sale_price: Optional[float] = None
     median_price_per_sqft: Optional[float] = None
-
-
-class RowByMonth(AggregateRowBase):
-    month: str
-
-
-class RowByNeighborhood(AggregateRowBase):
-    neighborhood: str
-
-
-class RowByClass(AggregateRowBase):
-    building_class_category: str
-
-
-AggregateRow = Union[AggregateRowBase, RowByMonth, RowByNeighborhood, RowByClass]
 
 
 class AggregateResponse(BaseModel):

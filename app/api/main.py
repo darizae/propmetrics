@@ -74,6 +74,9 @@ def aggregate(spec: QuerySpec, response: Response, request: Request) -> Dict[str
     cols = key_cols + metric_cols
     df = df[cols] if set(cols).issubset(df.columns) else df
 
+    if not df.empty:
+        df = df.astype(object).where(pd.notna(df), None)
+
     data = df.to_dict(orient="records")
     out = {"filters_echo": echo, "row_count": len(data), "data": data}
 
