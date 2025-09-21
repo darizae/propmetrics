@@ -37,3 +37,20 @@ Commands
 - make test
 - make serve
 - curl -s http://127.0.0.1:8000/health | jq
+
+---
+
+Day 4 targets
+- OpenAPI docs exposed by FastAPI; export minimal Actions schema to actions/openapi.yaml.
+- Responses are tool-only numerics: no prose fields in /aggregate payload; typed response_model.
+- Scripted acceptance checks with latency threshold and presence of filters_echo.
+
+Commands
+- make install
+- make serve
+- make openapi   # writes actions/openapi.yaml (set SERVER_URL env to override server URL)
+- make accept    # runs three canned checks; exit nonzero on failure
+
+Notes
+- For Actions, host the server and point the Actions config to actions/openapi.yaml.
+
