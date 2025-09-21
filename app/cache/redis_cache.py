@@ -69,10 +69,10 @@ def get_cache() -> Cache:
     return Cache(client=client, ttl=ttl)
 
 
-def _lower_sorted(xs: Optional[List[str]]) -> Optional[List[str]]:
+def _lower_sorted_strip(xs):
     if xs is None:
         return None
-    return sorted([x.lower() for x in xs])
+    return sorted([x.strip().lower() for x in xs])
 
 
 def _sorted_keepcase(xs: Optional[List[str]]) -> Optional[List[str]]:
@@ -97,9 +97,10 @@ def canonical_spec_dict(spec_model) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "date_range": {"start": start_iso, "end": end_iso},
         "groupby": d.get("groupby", "none"),
-        "borough": _lower_sorted(d.get("borough")),
-        "neighborhood": _lower_sorted(d.get("neighborhood")),
-        "building_class_category": _sorted_keepcase(d.get("building_class_category")),
+        "borough": _lower_sorted_strip(d.get("borough")),
+        "neighborhood": _lower_sorted_strip(d.get("neighborhood")),
+        "building_class_category": _sorted_keepcase(
+            [(x.strip() if isinstance(x, str) else x) for x in (d.get("building_class_category") or [])]) or None,
     }
     return out
 

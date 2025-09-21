@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Response, Request
 from fastapi.responses import StreamingResponse
 
+from app.api.models import AggregateResponse
 from app.cache.redis_cache import get_cache, spec_cache_key
 from app.core.utils import env
 from app.db.duck import get_con, init_duck
@@ -24,14 +25,30 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="propmetrics", version="0.1", lifespan=lifespan)
+tags_metadata = [
+    {"name": "analytics", "description": "Aggregates over NYC rolling sales Parquet"},
+    {"name": "ops", "description": "Operational endpoints"},
+]
+
+app = FastAPI(
+    title="propmetrics",
+    version="0.1",
+    lifespan=lifespan,
+    openapi_tags=tags_metadata,
+)
 
 
-@app.post("/aggregate")
+@app.post(
+    "/aggregate",
+    tags=["analytics"],
+    response_model=AggregateResponse,
+    response_model_exclude_none=True,
+    summary="Compute aggregates",
+    description="Compute count/sum/median metrics with optional grouping by month, neighborhood, or class.",
+)
 def aggregate(spec: QuerySpec, response: Response, request: Request) -> Dict[str, Any]:
     cache = getattr(request.app.state, "cache", None)
     cache_ok = bool(cache and cache.healthy())
-
     if cache_ok:
         key = spec_cache_key("agg", spec)
         cached = cache.get(key)
@@ -57,24 +74,26 @@ def aggregate(spec: QuerySpec, response: Response, request: Request) -> Dict[str
     cols = key_cols + metric_cols
     df = df[cols] if set(cols).issubset(df.columns) else df
 
+    if not df.empty:
+        df = df.astype(object).where(pd.notna(df), None)
+
     data = df.to_dict(orient="records")
-    out = {
-        "filters_echo": echo,
-        "row_count": len(data),
-        "data": data,
-        "notes": "metrics computed in DuckDB; medians ignore NULLs"
-    }
+    out = {"filters_echo": echo, "row_count": len(data), "data": data}
 
     if cache_ok:
         cache.set(key, json.dumps(out).encode("utf-8"))
         response.headers["x-cache"] = "miss"
     else:
         response.headers["x-cache"] = "bypass"
-
     return out
 
 
-@app.post("/download")
+@app.post(
+    "/download",
+    tags=["analytics"],
+    summary="Download aggregate as CSV",
+    description="Identical result set as /aggregate returned as CSV.",
+)
 def download(spec: QuerySpec, request: Request):
     cache = getattr(request.app.state, "cache", None)
     cache_ok = bool(cache and cache.healthy())
@@ -107,7 +126,12 @@ def download(spec: QuerySpec, request: Request):
     return resp
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["ops"],
+    summary="Service health",
+    description="Snapshot timestamps per borough, rows count, schema fingerprint, and cache status.",
+)
 def health(request: Request) -> Dict[str, Any]:
     data_dir = Path(env("DATA_DIR"))
     meta_dir = data_dir / "meta" / "nyc_rolling_sales"
@@ -141,9 +165,6 @@ def health(request: Request) -> Dict[str, Any]:
         "dataset": "nyc_rolling_sales",
         "schema_fingerprint": schema_fp,
         "rows": summary.get("rows"),
-        "cache": {
-            "enabled": enabled,
-            "healthy": healthy
-        },
-        "boroughs": boroughs
+        "cache": {"enabled": enabled, "healthy": healthy},
+        "boroughs": boroughs,
     }
