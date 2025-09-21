@@ -1,0 +1,282 @@
+openapi: 3.1.0
+info:
+  title: propmetrics-tools
+  version: '0.1'
+  description: Tool-only API for computing aggregates over NYC rolling sales Parquet.
+    Return numbers; no prose.
+paths:
+  /aggregate:
+    post:
+      tags:
+      - analytics
+      summary: Compute aggregates
+      description: Compute count/sum/median metrics with optional grouping by month,
+        neighborhood, or class.
+      operationId: aggregate_aggregate_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuerySpec'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /download:
+    post:
+      tags:
+      - analytics
+      summary: Download aggregate as CSV
+      description: Identical result set as /aggregate returned as CSV.
+      operationId: download_download_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuerySpec'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AggregateResponse:
+      properties:
+        filters_echo:
+          type: object
+          title: Filters Echo
+        row_count:
+          type: integer
+          title: Row Count
+        data:
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/AggregateRowBase'
+            - $ref: '#/components/schemas/RowByMonth'
+            - $ref: '#/components/schemas/RowByNeighborhood'
+            - $ref: '#/components/schemas/RowByClass'
+          type: array
+          title: Data
+      type: object
+      required:
+      - filters_echo
+      - row_count
+      - data
+      title: AggregateResponse
+    AggregateRowBase:
+      properties:
+        txns:
+          type: integer
+          title: Txns
+        total_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Total Sale Price
+        median_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Sale Price
+        median_price_per_sqft:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Price Per Sqft
+      type: object
+      required:
+      - txns
+      title: AggregateRowBase
+    DateRange:
+      properties:
+        start:
+          type: string
+          format: date
+          title: Start
+        end:
+          type: string
+          format: date
+          title: End
+      type: object
+      required:
+      - start
+      - end
+      title: DateRange
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    QuerySpec:
+      properties:
+        date_range:
+          $ref: '#/components/schemas/DateRange'
+        borough:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Borough
+        neighborhood:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Neighborhood
+        building_class_category:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Building Class Category
+        groupby:
+          type: string
+          enum:
+          - none
+          - month
+          - neighborhood
+          - class
+          title: Groupby
+          default: none
+      type: object
+      required:
+      - date_range
+      title: QuerySpec
+    RowByClass:
+      properties:
+        txns:
+          type: integer
+          title: Txns
+        total_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Total Sale Price
+        median_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Sale Price
+        median_price_per_sqft:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Price Per Sqft
+        building_class_category:
+          type: string
+          title: Building Class Category
+      type: object
+      required:
+      - txns
+      - building_class_category
+      title: RowByClass
+    RowByMonth:
+      properties:
+        txns:
+          type: integer
+          title: Txns
+        total_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Total Sale Price
+        median_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Sale Price
+        median_price_per_sqft:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Price Per Sqft
+        month:
+          type: string
+          title: Month
+      type: object
+      required:
+      - txns
+      - month
+      title: RowByMonth
+    RowByNeighborhood:
+      properties:
+        txns:
+          type: integer
+          title: Txns
+        total_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Total Sale Price
+        median_sale_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Sale Price
+        median_price_per_sqft:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Median Price Per Sqft
+        neighborhood:
+          type: string
+          title: Neighborhood
+      type: object
+      required:
+      - txns
+      - neighborhood
+      title: RowByNeighborhood
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+tags:
+- name: analytics
+  description: Aggregates over NYC rolling sales Parquet
+- name: ops
+  description: Operational endpoints
+servers:
+- url: http://localhost:8000
