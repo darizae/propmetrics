@@ -1,18 +1,19 @@
 import io
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Any
 
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI, Response, Request, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api.models import AggregateResponse
 from app.cache.redis_cache import get_cache, spec_cache_key
 from app.core.utils import env
-from app.db.duck import get_con, init_duck
+from app.db.duck import get_con, init_duck, reset_duck
 from app.query.planner import build_sql
 from app.query.spec import QuerySpec
 
@@ -36,6 +37,18 @@ app = FastAPI(
     lifespan=lifespan,
     openapi_tags=tags_metadata,
 )
+
+
+def _require_admin(request: Request) -> None:
+    expected = os.getenv("ADMIN_TOKEN", "")
+    if not expected:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    token = auth.split(" ", 1)[1].strip()
+    if token != expected:
+        raise HTTPException(status_code=401, detail="unauthorized")
 
 
 @app.post(
@@ -167,4 +180,35 @@ def health(request: Request) -> Dict[str, Any]:
         "rows": summary.get("rows"),
         "cache": {"enabled": enabled, "healthy": healthy},
         "boroughs": boroughs,
+    }
+
+
+@app.post(
+    "/admin/refresh",
+    tags=["ops"],
+    summary="Admin refresh (token-gated)",
+    description="Clears cache keys and remounts DuckDB over Parquet. Requires Authorization: Bearer <ADMIN_TOKEN>.",
+)
+def admin_refresh(request: Request) -> Dict[str, Any]:
+    _require_admin(request)
+
+    cache = getattr(request.app.state, "cache", None)
+    cleared = 0
+    cache_enabled = bool(cache and cache.client is not None)
+    cache_healthy = bool(cache and cache.healthy())
+    if cache_enabled and cache_healthy:
+        try:
+            for k in cache.client.scan_iter(match="pm:v1:*", count=1000):
+                cache.client.delete(k)
+                cleared += 1
+        except Exception:
+            cleared = 0
+
+    reset_duck()
+    init_duck()
+
+    return {
+        "status": "ok",
+        "cache": {"enabled": cache_enabled, "healthy": cache_healthy, "cleared": cleared},
+        "duckdb": "reloaded",
     }

@@ -69,11 +69,7 @@ components:
           title: Row Count
         data:
           items:
-            anyOf:
-            - $ref: '#/components/schemas/AggregateRowBase'
-            - $ref: '#/components/schemas/RowByMonth'
-            - $ref: '#/components/schemas/RowByNeighborhood'
-            - $ref: '#/components/schemas/RowByClass'
+            $ref: '#/components/schemas/AggregateRow'
           type: array
           title: Data
       type: object
@@ -82,8 +78,23 @@ components:
       - row_count
       - data
       title: AggregateResponse
-    AggregateRowBase:
+    AggregateRow:
       properties:
+        month:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Month
+        neighborhood:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Neighborhood
+        building_class_category:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Building Class Category
         txns:
           type: integer
           title: Txns
@@ -105,7 +116,7 @@ components:
       type: object
       required:
       - txns
-      title: AggregateRowBase
+      title: AggregateRow
     DateRange:
       properties:
         start:
@@ -168,90 +179,6 @@ components:
       required:
       - date_range
       title: QuerySpec
-    RowByClass:
-      properties:
-        txns:
-          type: integer
-          title: Txns
-        total_sale_price:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Total Sale Price
-        median_sale_price:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Sale Price
-        median_price_per_sqft:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Price Per Sqft
-        building_class_category:
-          type: string
-          title: Building Class Category
-      type: object
-      required:
-      - txns
-      - building_class_category
-      title: RowByClass
-    RowByMonth:
-      properties:
-        txns:
-          type: integer
-          title: Txns
-        total_sale_price:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Total Sale Price
-        median_sale_price:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Sale Price
-        median_price_per_sqft:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Price Per Sqft
-        month:
-          type: string
-          title: Month
-      type: object
-      required:
-      - txns
-      - month
-      title: RowByMonth
-    RowByNeighborhood:
-      properties:
-        txns:
-          type: integer
-          title: Txns
-        total_sale_price:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Total Sale Price
-        median_sale_price:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Sale Price
-        median_price_per_sqft:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Price Per Sqft
-        neighborhood:
-          type: string
-          title: Neighborhood
-      type: object
-      required:
-      - txns
-      - neighborhood
-      title: RowByNeighborhood
     ValidationError:
       properties:
         loc:
