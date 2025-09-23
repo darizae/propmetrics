@@ -52,8 +52,6 @@ pytest_cache/
 data/
 !data/.gitkeep
 
-# Optional: keep schema contracts and example envs
-!sources/nyc_rolling_sales_sources.json
 !.env.example
 
 # Parquet/arrow/duckdb outputs

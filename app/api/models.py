@@ -9,20 +9,18 @@ class DateRangeModel(BaseModel):
 
 class QuerySpecModel(BaseModel):
     date_range: DateRangeModel
-    borough: Optional[List[str]] = None
-    neighborhood: Optional[List[str]] = None
-    building_class_category: Optional[List[str]] = None
-    groupby: Literal["none", "month", "neighborhood", "class"] = "none"
+    municipality: Optional[List[str]] = None
+    land_use: Optional[List[str]] = None  # NUTA codes (e.g., WA, WB, WR, MI, GE, GI, W, M, etc.)
+    plz: Optional[List[str]] = None
+    groupby: Literal["none", "month", "municipality", "land_use"] = "none"
 
 
 class AggregateRow(BaseModel):
     month: Optional[str] = None
-    neighborhood: Optional[str] = None
-    building_class_category: Optional[str] = None
-    txns: int
-    total_sale_price: Optional[float] = None
-    median_sale_price: Optional[float] = None
-    median_price_per_sqft: Optional[float] = None
+    municipality: Optional[str] = None
+    land_use: Optional[str] = None
+    zones: int
+    median_eur_per_m2: Optional[float] = None
 
 
 class AggregateResponse(BaseModel):

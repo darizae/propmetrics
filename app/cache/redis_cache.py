@@ -88,21 +88,19 @@ def canonical_spec_dict(spec_model) -> Dict[str, Any]:
         d = dict(spec_model)
 
     dr = d.get("date_range") or {}
-    start = dr.get("start")
+    start = dr.get("start");
     end = dr.get("end")
-    # handle date objects or strings
     start_iso = start.isoformat() if hasattr(start, "isoformat") else str(start)
     end_iso = end.isoformat() if hasattr(end, "isoformat") else str(end)
 
-    out: Dict[str, Any] = {
+    return {
         "date_range": {"start": start_iso, "end": end_iso},
         "groupby": d.get("groupby", "none"),
-        "borough": _lower_sorted_strip(d.get("borough")),
-        "neighborhood": _lower_sorted_strip(d.get("neighborhood")),
-        "building_class_category": _sorted_keepcase(
-            [(x.strip() if isinstance(x, str) else x) for x in (d.get("building_class_category") or [])]) or None,
+        "municipality": _lower_sorted_strip(d.get("municipality")),
+        "land_use": _sorted_keepcase(
+            [(x.strip() if isinstance(x, str) else x) for x in (d.get("land_use") or [])]) or None,
+        "plz": _sorted_keepcase([(x.strip() if isinstance(x, str) else x) for x in (d.get("plz") or [])]) or None,
     }
-    return out
 
 
 def spec_cache_key(prefix: str, spec_model) -> str:

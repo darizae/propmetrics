@@ -1,6 +1,4 @@
-import os
-import sys
-import yaml
+import os, sys, yaml
 from app.api.main import app
 from pathlib import Path
 
@@ -15,11 +13,10 @@ def main():
     keep = {k: v for k, v in paths.items() if k in ("/aggregate", "/download")}
     raw["paths"] = keep
     raw["info"]["title"] = "propmetrics-tools"
-    raw["info"]["description"] = (
-        "Tool-only API for computing aggregates over NYC rolling sales Parquet. Return numbers; no prose."
-    )
+    raw["info"][
+        "description"] = "Tool-only API for computing aggregates over NRW Bodenrichtwerte Parquet. Return numbers; no prose."
     raw["servers"] = [{"url": os.getenv("SERVER_URL", "http://localhost:8000")}]
-    outdir = ROOT / "actions"
+    outdir = ROOT / "actions";
     outdir.mkdir(parents=True, exist_ok=True)
     out = outdir / "openapi.yaml"
     with out.open("w") as f:

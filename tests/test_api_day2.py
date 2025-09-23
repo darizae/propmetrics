@@ -1,6 +1,4 @@
-import csv
-import io
-import re
+import csv, io, re
 
 
 def _iso_ymd(s: str) -> bool:
@@ -9,7 +7,7 @@ def _iso_ymd(s: str) -> bool:
 
 def test_aggregate_basic_structure(client):
     resp = client.post("/aggregate",
-                       json={"date_range": {"start": "1990-01-01", "end": "2030-12-31"}, "groupby": "none"})
+                       json={"date_range": {"start": "2011-01-01", "end": "2030-12-31"}, "groupby": "none"})
     assert resp.status_code == 200
     payload = resp.json()
     assert set(["filters_echo", "data", "row_count"]).issubset(payload)
@@ -17,12 +15,12 @@ def test_aggregate_basic_structure(client):
     assert payload["row_count"] in (0, 1)
     if payload["data"]:
         row = payload["data"][0]
-        for k in ["txns", "total_sale_price", "median_sale_price", "median_price_per_sqft"]:
+        for k in ["zones", "median_eur_per_m2"]:
             assert k in row
 
 
 def test_aggregate_groupby_month_sorting_and_format(client):
-    spec = {"date_range": {"start": "1990-01-01", "end": "2030-12-31"}, "groupby": "month"}
+    spec = {"date_range": {"start": "2011-01-01", "end": "2030-12-31"}, "groupby": "month"}
     resp = client.post("/aggregate", json=spec)
     assert resp.status_code == 200
     data = resp.json()["data"]
@@ -33,43 +31,27 @@ def test_aggregate_groupby_month_sorting_and_format(client):
         assert months == sorted(months)
 
 
-def test_filters_echo_borough_normalization(client):
-    spec = {"date_range": {"start": "1990-01-01", "end": "2030-12-31"}, "borough": ["Manhattan"], "groupby": "none"}
+def test_filters_echo_municipality_normalization(client):
+    spec = {"date_range": {"start": "2011-01-01", "end": "2030-12-31"}, "municipality": ["Köln"], "groupby": "none"}
     resp = client.post("/aggregate", json=spec)
     assert resp.status_code == 200
     echo = resp.json()["filters_echo"]
-    assert echo["borough"] == ["manhattan"]
+    assert echo["municipality"] == ["köln"]
 
 
-def test_groupby_neighborhood_shape(client):
-    spec = {"date_range": {"start": "1990-01-01", "end": "2030-12-31"}, "borough": ["Queens"],
-            "groupby": "neighborhood"}
+def test_groupby_land_use_shape(client):
+    spec = {"date_range": {"start": "2018-01-01", "end": "2030-12-31"}, "groupby": "land_use"}
     resp = client.post("/aggregate", json=spec)
     assert resp.status_code == 200
     data = resp.json()["data"]
     if data:
-        assert "neighborhood" in data[0]
+        assert "land_use" in data[0]
         for row in data:
-            assert "txns" in row and isinstance(row["txns"], int)
-
-
-def test_filter_by_class_no_crash_and_metrics_present(client):
-    spec = {
-        "date_range": {"start": "1990-01-01", "end": "2030-12-31"},
-        "building_class_category": ["01 ONE FAMILY DWELLINGS"],
-        "groupby": "none",
-    }
-    resp = client.post("/aggregate", json=spec)
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert "row_count" in payload and "data" in payload
-    if payload["data"]:
-        row = payload["data"][0]
-        assert "txns" in row and "median_price_per_sqft" in row
+            assert "zones" in row and isinstance(row["zones"], int)
 
 
 def test_download_csv_matches_json_rows_when_groupby_month(client):
-    q = {"date_range": {"start": "1990-01-01", "end": "2030-12-31"}, "groupby": "month"}
+    q = {"date_range": {"start": "2011-01-01", "end": "2030-12-31"}, "groupby": "month"}
     j = client.post("/aggregate", json=q).json()
     resp = client.post("/download", json=q)
     assert resp.status_code == 200
@@ -89,7 +71,7 @@ def test_invalid_date_range_returns_422(client):
 
 
 def test_invalid_groupby_literal_returns_422(client):
-    spec = {"date_range": {"start": "1990-01-01", "end": "2030-12-31"}, "groupby": "bad_choice"}
+    spec = {"date_range": {"start": "2011-01-01", "end": "2030-12-31"}, "groupby": "bad_choice"}
     resp = client.post("/aggregate", json=spec)
     assert resp.status_code == 422
 

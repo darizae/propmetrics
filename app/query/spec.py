@@ -2,7 +2,7 @@ from typing import Literal, Optional, List
 from datetime import date
 from pydantic import BaseModel, field_validator
 
-GroupBy = Literal["none", "month", "neighborhood", "class"]
+GroupBy = Literal["none", "month", "municipality", "land_use"]
 
 
 class DateRange(BaseModel):
@@ -20,7 +20,7 @@ class DateRange(BaseModel):
 
 class QuerySpec(BaseModel):
     date_range: DateRange
-    borough: Optional[List[str]] = None
-    neighborhood: Optional[List[str]] = None
-    building_class_category: Optional[List[str]] = None
+    municipality: Optional[List[str]] = None
+    land_use: Optional[List[str]] = None
+    plz: Optional[List[str]] = None
     groupby: GroupBy = "none"

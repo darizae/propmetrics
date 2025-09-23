@@ -10,7 +10,8 @@ def _connect_and_mount(parquet_path: Path) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(database=":memory:")
     con.execute("PRAGMA threads=4")
     p = str(parquet_path).replace("'", "''")
-    con.execute(f"CREATE OR REPLACE VIEW nyc AS SELECT * FROM read_parquet('{p}')")
+    con.execute(f"CREATE OR REPLACE VIEW brw AS SELECT * FROM read_parquet('{p}')")
+    con.execute("SELECT 1 FROM brw LIMIT 1")
     return con
 
 
@@ -20,7 +21,7 @@ def init_duck() -> duckdb.DuckDBPyConnection:
         return _con
     load_dotenv()
     data_dir = Path(env("DATA_DIR"))
-    parquet_path = data_dir / "parquet" / "nyc_rolling_sales" / "nyc_rolling_sales.parquet"
+    parquet_path = data_dir / "parquet" / "de_boris_brw" / "de_boris_brw.parquet"
     if not parquet_path.exists():
         raise SystemExit(f"Parquet not found: {parquet_path}")
     _con = _connect_and_mount(parquet_path)

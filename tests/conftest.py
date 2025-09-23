@@ -6,12 +6,12 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("DATA_DIR", "./data")
 os.environ.setdefault("REDIS_URL", "fakeredis://")
 
-from app.api.main import app  # noqa: E402
+from app.api.main import app  # noqa
 
 
 @pytest.fixture(scope="session")
 def data_ready():
-    p = Path(os.environ["DATA_DIR"]) / "parquet" / "nyc_rolling_sales" / "nyc_rolling_sales.parquet"
+    p = Path(os.environ["DATA_DIR"]) / "parquet" / "de_boris_brw" / "de_boris_brw.parquet"
     if not p.exists():
         pytest.skip(f"Parquet not found at {p}. Run `make fetch && make normalize` first.")
     return p
@@ -24,4 +24,4 @@ def client(data_ready):
 
 
 def base_spec():
-    return {"date_range": {"start": "1990-01-01", "end": "2030-12-31"}, "groupby": "none"}
+    return {"date_range": {"start": "2011-01-01", "end": "2030-12-31"}, "groupby": "none"}

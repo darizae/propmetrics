@@ -3,21 +3,16 @@ import pandas as pd
 from app.db.duck import init_duck_with_parquet, reset_duck, init_duck
 
 
-def test_golden_dataset_month_and_medians(tmp_path):
+def test_golden_dataset_month_and_median(tmp_path):
     df = pd.DataFrame([
-        {"borough": "manhattan", "neighborhood": "X", "building_class_category": "A", "sale_price": 1000.0,
-         "gross_square_feet": 100.0, "sale_date": "2024-01-15", "price_per_sqft": 10.0},
-        {"borough": "manhattan", "neighborhood": "X", "building_class_category": "A", "sale_price": 2000.0,
-         "gross_square_feet": 200.0, "sale_date": "2024-01-20", "price_per_sqft": 10.0},
-        {"borough": "manhattan", "neighborhood": "Y", "building_class_category": "B", "sale_price": 3000.0,
-         "gross_square_feet": 100.0, "sale_date": "2024-02-01", "price_per_sqft": 30.0},
+        {"municipality": "koeln", "land_use": "WA", "plz": "50667", "eur_per_m2": 1000.0, "stichtag": "2024-01-15"},
+        {"municipality": "koeln", "land_use": "WA", "plz": "50667", "eur_per_m2": 2000.0, "stichtag": "2024-01-20"},
+        {"municipality": "bochum", "land_use": "MI", "plz": "44787", "eur_per_m2": 3000.0, "stichtag": "2024-02-01"},
     ])
     p = tmp_path / "golden.parquet"
     df.to_parquet(p, index=False)
-
-    reset_duck()
+    reset_duck();
     init_duck_with_parquet(p)
-
     from app.api.main import app
     with TestClient(app) as c:
         q = {"date_range": {"start": "2024-01-01", "end": "2024-12-31"}, "groupby": "month"}
@@ -27,12 +22,9 @@ def test_golden_dataset_month_and_medians(tmp_path):
         assert len(rows) == 2
         jan = next(x for x in rows if x["month"] == "2024-01-01")
         feb = next(x for x in rows if x["month"] == "2024-02-01")
-        assert jan["txns"] == 2
-        assert jan["total_sale_price"] == 3000.0
-        assert jan["median_sale_price"] == 1500.0
-        assert jan["median_price_per_sqft"] == 10.0
-        assert feb["txns"] == 1
-        assert feb["median_price_per_sqft"] == 30.0
-
-    reset_duck()
+        assert jan["zones"] == 2
+        assert jan["median_eur_per_m2"] == 1500.0
+        assert feb["zones"] == 1
+        assert feb["median_eur_per_m2"] == 3000.0
+    reset_duck();
     init_duck()

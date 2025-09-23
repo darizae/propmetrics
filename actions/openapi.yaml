@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: propmetrics-tools
   version: '0.1'
-  description: Tool-only API for computing aggregates over NYC rolling sales Parquet.
+  description: Tool-only API for computing aggregates over NRW Bodenrichtwerte Parquet.
     Return numbers; no prose.
 paths:
   /aggregate:
@@ -10,8 +10,8 @@ paths:
       tags:
       - analytics
       summary: Compute aggregates
-      description: Compute count/sum/median metrics with optional grouping by month,
-        neighborhood, or class.
+      description: "Count zones and median land value (\u20AC/m\xB2) with optional\
+        \ grouping by month, municipality, or land_use."
       operationId: aggregate_aggregate_post
       requestBody:
         content:
@@ -85,37 +85,27 @@ components:
           - type: string
           - type: 'null'
           title: Month
-        neighborhood:
+        municipality:
           anyOf:
           - type: string
           - type: 'null'
-          title: Neighborhood
-        building_class_category:
+          title: Municipality
+        land_use:
           anyOf:
           - type: string
           - type: 'null'
-          title: Building Class Category
-        txns:
+          title: Land Use
+        zones:
           type: integer
-          title: Txns
-        total_sale_price:
+          title: Zones
+        median_eur_per_m2:
           anyOf:
           - type: number
           - type: 'null'
-          title: Total Sale Price
-        median_sale_price:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Sale Price
-        median_price_per_sqft:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Median Price Per Sqft
+          title: Median Eur Per M2
       type: object
       required:
-      - txns
+      - zones
       title: AggregateRow
     DateRange:
       properties:
@@ -145,34 +135,34 @@ components:
       properties:
         date_range:
           $ref: '#/components/schemas/DateRange'
-        borough:
+        municipality:
           anyOf:
           - items:
               type: string
             type: array
           - type: 'null'
-          title: Borough
-        neighborhood:
+          title: Municipality
+        land_use:
           anyOf:
           - items:
               type: string
             type: array
           - type: 'null'
-          title: Neighborhood
-        building_class_category:
+          title: Land Use
+        plz:
           anyOf:
           - items:
               type: string
             type: array
           - type: 'null'
-          title: Building Class Category
+          title: Plz
         groupby:
           type: string
           enum:
           - none
           - month
-          - neighborhood
-          - class
+          - municipality
+          - land_use
           title: Groupby
           default: none
       type: object
@@ -202,7 +192,7 @@ components:
       title: ValidationError
 tags:
 - name: analytics
-  description: Aggregates over NYC rolling sales Parquet
+  description: Aggregates over NRW Bodenrichtwerte Parquet
 - name: ops
   description: Operational endpoints
 servers:
