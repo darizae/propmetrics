@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import yaml
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Any
@@ -44,6 +45,27 @@ def _require_admin(request: Request) -> None:
     token = auth.split(" ", 1)[1].strip()
     if token != expected:
         raise HTTPException(status_code=401, detail="unauthorized")
+
+
+ACTIONS_PATH = Path(__file__).resolve().parents[2] / "actions" / "openapi.yaml"
+
+
+@app.get("/openapi.yaml", include_in_schema=False)
+def openapi_yaml() -> Response:
+    if not ACTIONS_PATH.exists():
+        raw = app.openapi()
+        paths = raw.get("paths", {})
+        keep = {k: v for k, v in paths.items() if k in ("/aggregate", "/download")}
+        raw["paths"] = keep
+        raw["info"]["title"] = "propmetrics-tools"
+        raw["info"]["description"] = (
+            "Tool-only API for computing aggregates over NRW Bodenrichtwerte Parquet. Return numbers; no prose."
+        )
+        raw["servers"] = [{"url": os.getenv("SERVER_URL", "http://localhost:8000")}]
+        ACTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ACTIONS_PATH.write_text(yaml.safe_dump(raw, sort_keys=False))
+    data = ACTIONS_PATH.read_text()
+    return Response(content=data, media_type="application/yaml")
 
 
 @app.post("/aggregate", tags=["analytics"], response_model=AggregateResponse, response_model_exclude_none=True,
