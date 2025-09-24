@@ -24,6 +24,9 @@ from app.query.spec import QuerySpec
 from app.llm.intent import load_vocab, parse as parse_intent
 from app.llm.agent import ask as llm_ask
 
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv(usecwd=True), override=False)
+
 # ------------ process state ------------
 
 _vocab_cache: Dict[str, Any] = {}
