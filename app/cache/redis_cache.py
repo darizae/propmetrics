@@ -51,20 +51,41 @@ def _try_ping(client: Any) -> bool:
         return False
 
 
+def _make_fakeredis() -> Any | None:
+    if not fakeredis:
+        return None
+    try:
+        return fakeredis.FakeRedis()
+    except Exception:
+        return None
+
+
 def get_cache() -> Cache:
     url = os.getenv("REDIS_URL", "").strip()
     ttl = int(os.getenv("CACHE_TTL_SECONDS", "86400"))
-    client = None
+    client: Any | None = None
 
+    # Explicit fakeredis URL
     if url.startswith("fakeredis://"):
-        if fakeredis:
-            client = fakeredis.FakeRedis()
-    elif url and redis:
-        candidate = redis.from_url(url)
-        if _try_ping(candidate):
+        client = _make_fakeredis()
+        return Cache(client=client, ttl=ttl)
+
+    # Real Redis URL
+    if url and redis:
+        try:
+            candidate = redis.from_url(url)
+        except Exception:
+            candidate = None
+        if candidate and _try_ping(candidate):
             client = candidate
         else:
-            client = None
+            # Fallback to fakeredis when real Redis is unreachable
+            client = _make_fakeredis()
+            return Cache(client=client, ttl=ttl)
+
+    # No URL provided → prefer fakeredis for tests/dev
+    if not client:
+        client = _make_fakeredis()
 
     return Cache(client=client, ttl=ttl)
 
@@ -88,7 +109,7 @@ def canonical_spec_dict(spec_model) -> Dict[str, Any]:
         d = dict(spec_model)
 
     dr = d.get("date_range") or {}
-    start = dr.get("start");
+    start = dr.get("start")
     end = dr.get("end")
     start_iso = start.isoformat() if hasattr(start, "isoformat") else str(start)
     end_iso = end.isoformat() if hasattr(end, "isoformat") else str(end)
@@ -98,8 +119,11 @@ def canonical_spec_dict(spec_model) -> Dict[str, Any]:
         "groupby": d.get("groupby", "none"),
         "municipality": _lower_sorted_strip(d.get("municipality")),
         "land_use": _sorted_keepcase(
-            [(x.strip() if isinstance(x, str) else x) for x in (d.get("land_use") or [])]) or None,
-        "plz": _sorted_keepcase([(x.strip() if isinstance(x, str) else x) for x in (d.get("plz") or [])]) or None,
+            [(x.strip() if isinstance(x, str) else x) for x in (d.get("land_use") or [])]
+        ) or None,
+        "plz": _sorted_keepcase(
+            [(x.strip() if isinstance(x, str) else x) for x in (d.get("plz") or [])]
+        ) or None,
     }
 
 
