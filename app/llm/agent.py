@@ -8,7 +8,7 @@ from dotenv import load_dotenv, find_dotenv
 
 from app.cache.redis_cache import get_cache, spec_cache_key
 
-load_dotenv(find_dotenv(usecwd=True), override=True)
+load_dotenv(find_dotenv(usecwd=True), override=False)
 
 _TOOL_FUNCS = [
     {
@@ -16,25 +16,49 @@ _TOOL_FUNCS = [
         "function": {
             "name": "aggregate",
             "description": "Compute aggregates over BRW parquet",
+            "strict": True,
             "parameters": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "date_range": {
                         "type": "object",
+                        "additionalProperties": False,
                         "properties": {
                             "start": {"type": "string", "description": "YYYY-MM-DD"},
                             "end": {"type": "string", "description": "YYYY-MM-DD"},
                         },
                         "required": ["start", "end"],
                     },
-                    "municipality": {"type": "array", "items": {"type": "string"}},
-                    "land_use": {"type": "array", "items": {"type": "string"}},
-                    "plz": {"type": "array", "items": {"type": "string"}},
-                    "groupby": {"type": "string", "enum": ["none", "month", "municipality", "land_use"]},
+                    "municipality": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"}
+                        ],
+                        "default": None,
+                    },
+                    "land_use": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"}
+                        ],
+                        "default": None,
+                    },
+                    "plz": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"}
+                        ],
+                        "default": None,
+                    },
+                    "groupby": {
+                        "type": "string",
+                        "enum": ["none", "month", "municipality", "land_use"],
+                        "default": "none",
+                    },
                 },
-                "required": ["date_range"],
+                "required": ["date_range", "municipality", "land_use", "plz", "groupby"],
             },
-            "strict": True,
         },
     },
     {
@@ -42,45 +66,68 @@ _TOOL_FUNCS = [
         "function": {
             "name": "download",
             "description": "Download same aggregate as CSV",
+            "strict": True,
             "parameters": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
                     "date_range": {
                         "type": "object",
+                        "additionalProperties": False,
                         "properties": {
                             "start": {"type": "string"},
                             "end": {"type": "string"},
                         },
                         "required": ["start", "end"],
                     },
-                    "municipality": {"type": "array", "items": {"type": "string"}},
-                    "land_use": {"type": "array", "items": {"type": "string"}},
-                    "plz": {"type": "array", "items": {"type": "string"}},
-                    "groupby": {"type": "string", "enum": ["none", "month", "municipality", "land_use"]},
+                    "municipality": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"}
+                        ],
+                        "default": None,
+                    },
+                    "land_use": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"}
+                        ],
+                        "default": None,
+                    },
+                    "plz": {
+                        "anyOf": [
+                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "null"}
+                        ],
+                        "default": None,
+                    },
+                    "groupby": {
+                        "type": "string",
+                        "enum": ["none", "month", "municipality", "land_use"],
+                        "default": "none",
+                    },
                 },
-                "required": ["date_range"],
+                "required": ["date_range", "municipality", "land_use", "plz", "groupby"],
             },
-            "strict": True,
         },
     },
 ]
 
+# System rules include the default window rule explicitly.
 _SYS = (
     "You are a tool-using agent. Only use the provided functions; do not invent fields. "
+    "Default date window is 2011-01-01..2030-12-31. Interpret 'since YYYY' as YYYY-01-01..2030-12-31. "
     "Return a terse JSON object: {filters_echo,row_count,data[]} without prose. "
     "If filters yield zero rows, still return row_count: 0 with empty data[]. "
     "Never emit code blocks. Never mention functions."
 )
-
 
 def _http() -> httpx.Client:
     base = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
     timeout = float(os.getenv("LLM_TIMEOUT_S", "20"))
     return httpx.Client(base_url=base, timeout=timeout)
 
-
 def _cfg() -> Dict[str, Any]:
-    # Read env lazily so `.env` and runtime overrides are honored
     model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo-0125").strip()
     api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
     api_base = (os.getenv("OPENAI_API_BASE") or "").strip()
@@ -100,7 +147,6 @@ def _cfg() -> Dict[str, Any]:
         "max_prompt": max_prompt,
     }
 
-
 def _make_openai_client(cfg: Dict[str, Any]):
     if not cfg["api_key"]:
         raise HTTPException(status_code=400, detail="missing_openai_api_key")
@@ -116,19 +162,44 @@ def _make_openai_client(cfg: Dict[str, Any]):
         kwargs["project"] = cfg["project"]
     return OpenAI(**kwargs)
 
-
 def _call_backend(fn: str, args: Dict[str, Any]) -> Tuple[str, str]:
     with _http() as c:
         if fn == "aggregate":
-            r = c.post("/aggregate", json=args);
-            r.raise_for_status()
+            r = c.post("/aggregate", json=args); r.raise_for_status()
             return "aggregate", json.dumps(r.json(), ensure_ascii=False)
         if fn == "download":
-            r = c.post("/download", json=args);
-            r.raise_for_status()
+            r = c.post("/download", json=args); r.raise_for_status()
             return "download", r.text
     raise HTTPException(400, detail=f"unknown tool {fn}")
 
+def _intent_spec(text: str) -> Dict[str, Any]:
+    # Deterministic parser result used as authoritative defaults.
+    with _http() as c:
+        pr = c.post("/intent/parse", json={"text": text})
+        if pr.status_code != 200:
+            raise HTTPException(400, detail="PARSE_ERROR")
+        return pr.json().get("spec", {}) or {}
+
+def _merge_args(args: Dict[str, Any], base: Dict[str, Any]) -> Dict[str, Any]:
+    # Fill missing fields and widen date window to base end (2030-12-31) when LLM narrows it unintentionally.
+    out = dict(args or {})
+    # groupby
+    if "groupby" not in out and "groupby" in base:
+        out["groupby"] = base["groupby"]
+    # lists
+    for k in ("municipality", "land_use", "plz"):
+        if k not in out:
+            out[k] = base.get(k, None)
+    # date_range
+    br = (base.get("date_range") or {})
+    ar = (out.get("date_range") or {})
+    start = ar.get("start") or br.get("start") or "2011-01-01"
+    end = ar.get("end") or br.get("end") or "2030-12-31"
+    # If base end is later (typically 2030-12-31), prefer it to avoid accidental truncation.
+    if br.get("end") and end < br["end"]:
+        end = br["end"]
+    out["date_range"] = {"start": start, "end": end}
+    return out
 
 def ask(text: str) -> Dict[str, Any]:
     cfg = _cfg()
@@ -142,20 +213,13 @@ def ask(text: str) -> Dict[str, Any]:
         if hit:
             return json.loads(hit)
 
+
+    base_spec = _intent_spec(text)
+
     if os.getenv("LLM_MOCK", "0") == "1":
         with _http() as c:
-            pr = c.post("/intent/parse", json={"text": text})
-            if pr.status_code != 200:
-                raise HTTPException(400, detail="PARSE_ERROR")
-            spec = pr.json()["spec"]
-            ar = c.post("/aggregate", json=spec)
-            ar.raise_for_status()
-            out = ar.json()
-            out["llm"] = {
-                "mode": "mock",
-                "debug_api_key": cfg["api_key"],
-                "debug_project": cfg["project"],
-            }
+            ar = c.post("/aggregate", json=base_spec); ar.raise_for_status()
+            out = ar.json(); out["llm"] = {"mode": "mock"}
     else:
         try:
             client = _make_openai_client(cfg)
@@ -175,24 +239,10 @@ def ask(text: str) -> Dict[str, Any]:
                     hint = "invalid_api_key"
                     if cfg["api_key"].startswith("sk-proj-") and not cfg["project"]:
                         hint = "project_key_missing_OPENAI_PROJECT"
-                    raise HTTPException(
-                        status_code=401,
-                        detail={
-                            "error": hint,
-                            "debug_api_key": cfg["api_key"],
-                            "debug_project": cfg["project"],
-                        },
-                    )
+                    raise HTTPException(status_code=401, detail=hint)
             except Exception:
                 pass
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": str(e),
-                    "debug_api_key": cfg["api_key"],
-                    "debug_project": cfg["project"],
-                },
-            )
+            raise
 
         msg = resp.choices[0].message
         tool_calls = msg.tool_calls or []
@@ -200,18 +250,12 @@ def ask(text: str) -> Dict[str, Any]:
         for tc in tool_calls:
             fn = tc.function.name
             args = json.loads(tc.function.arguments or "{}")
-            name, result = _call_backend(fn, args)
+            merged = _merge_args(args, base_spec)
+            name, result = _call_backend(fn, merged)
             tool_results.append({"tool_name": name, "result": result})
 
         if not tool_results:
-            raise HTTPException(
-                502,
-                detail={
-                    "error": "llm_no_tool_call",
-                    "debug_api_key": cfg["api_key"],
-                    "debug_project": cfg["project"],
-                },
-            )
+            raise HTTPException(502, detail="llm_no_tool_call")
 
         final = client.chat.completions.create(
             model=cfg["model"],
@@ -237,24 +281,12 @@ def ask(text: str) -> Dict[str, Any]:
             try:
                 out = json.loads(tool_results[-1]["result"])
             except Exception:
-                raise HTTPException(
-                    502,
-                    detail={
-                        "error": "llm_output_not_json",
-                        "debug_api_key": cfg["api_key"],
-                        "debug_project": cfg["project"],
-                    },
-                )
-
+                raise HTTPException(502, detail="llm_output_not_json")
         out["llm"] = {
             "model": cfg["model"],
             "finish_reason": final.choices[0].finish_reason,
-            "debug_api_key": cfg["api_key"],
-            "debug_project": cfg["project"],
         }
 
     if cache and cache.healthy():
         cache.set(cache_key, json.dumps(out).encode("utf-8"))
     return out
-
-

@@ -1,16 +1,15 @@
 import io
 import json
 import os
-import re
 import time
-import yaml
+from collections import deque, defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Any, Callable, Deque
-from collections import deque, defaultdict
+from typing import Dict, Any, Deque
 
 import pandas as pd
-from dotenv import load_dotenv
+import yaml
+from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, Response, Request, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
@@ -19,12 +18,11 @@ from app.api.models import AggregateResponse
 from app.cache.redis_cache import get_cache, spec_cache_key
 from app.core.utils import env
 from app.db.duck import get_con, init_duck, reset_duck
+from app.llm.agent import ask as llm_ask
+from app.llm.intent import load_vocab, parse as parse_intent
 from app.query.planner import build_sql
 from app.query.spec import QuerySpec
-from app.llm.intent import load_vocab, parse as parse_intent
-from app.llm.agent import ask as llm_ask
 
-from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(usecwd=True), override=True)
 
 # ------------ process state ------------
@@ -373,6 +371,11 @@ def ui():
 @app.post("/llm/ask", tags=["ops"], summary="LLM front to tools (numbers-only)")
 def llm_ask_handler(payload: Dict[str, str] = Body(...), request: Request = None) -> JSONResponse:
     _rate_limit(request)
-    text = (payload.get("text") or "").strip()
-    out = llm_ask(text)
-    return JSONResponse(out)
+    try:
+        text = (payload.get("text") or "").strip()
+        out = llm_ask(text)
+        return JSONResponse(out)
+    except HTTPException as ex:
+        raise ex
+    except Exception:
+        raise HTTPException(status_code=500, detail="llm_call_failed")
