@@ -8,7 +8,7 @@ from dotenv import load_dotenv, find_dotenv
 
 from app.cache.redis_cache import get_cache, spec_cache_key
 
-load_dotenv(find_dotenv(usecwd=True), override=False)
+load_dotenv(find_dotenv(usecwd=True), override=True)
 
 _TOOL_FUNCS = [
     {
@@ -148,10 +148,14 @@ def ask(text: str) -> Dict[str, Any]:
             if pr.status_code != 200:
                 raise HTTPException(400, detail="PARSE_ERROR")
             spec = pr.json()["spec"]
-            ar = c.post("/aggregate", json=spec);
+            ar = c.post("/aggregate", json=spec)
             ar.raise_for_status()
-            out = ar.json();
-            out["llm"] = {"mode": "mock"}
+            out = ar.json()
+            out["llm"] = {
+                "mode": "mock",
+                "debug_api_key": cfg["api_key"],
+                "debug_project": cfg["project"],
+            }
     else:
         try:
             client = _make_openai_client(cfg)
@@ -171,10 +175,24 @@ def ask(text: str) -> Dict[str, Any]:
                     hint = "invalid_api_key"
                     if cfg["api_key"].startswith("sk-proj-") and not cfg["project"]:
                         hint = "project_key_missing_OPENAI_PROJECT"
-                    raise HTTPException(status_code=401, detail=hint)
+                    raise HTTPException(
+                        status_code=401,
+                        detail={
+                            "error": hint,
+                            "debug_api_key": cfg["api_key"],
+                            "debug_project": cfg["project"],
+                        },
+                    )
             except Exception:
                 pass
-            raise
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": str(e),
+                    "debug_api_key": cfg["api_key"],
+                    "debug_project": cfg["project"],
+                },
+            )
 
         msg = resp.choices[0].message
         tool_calls = msg.tool_calls or []
@@ -186,7 +204,14 @@ def ask(text: str) -> Dict[str, Any]:
             tool_results.append({"tool_name": name, "result": result})
 
         if not tool_results:
-            raise HTTPException(502, detail="llm_no_tool_call")
+            raise HTTPException(
+                502,
+                detail={
+                    "error": "llm_no_tool_call",
+                    "debug_api_key": cfg["api_key"],
+                    "debug_project": cfg["project"],
+                },
+            )
 
         final = client.chat.completions.create(
             model=cfg["model"],
@@ -212,9 +237,24 @@ def ask(text: str) -> Dict[str, Any]:
             try:
                 out = json.loads(tool_results[-1]["result"])
             except Exception:
-                raise HTTPException(502, detail="llm_output_not_json")
-        out["llm"] = {"model": cfg["model"], "finish_reason": final.choices[0].finish_reason}
+                raise HTTPException(
+                    502,
+                    detail={
+                        "error": "llm_output_not_json",
+                        "debug_api_key": cfg["api_key"],
+                        "debug_project": cfg["project"],
+                    },
+                )
+
+        out["llm"] = {
+            "model": cfg["model"],
+            "finish_reason": final.choices[0].finish_reason,
+            "debug_api_key": cfg["api_key"],
+            "debug_project": cfg["project"],
+        }
 
     if cache and cache.healthy():
         cache.set(cache_key, json.dumps(out).encode("utf-8"))
     return out
+
+

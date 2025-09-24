@@ -25,7 +25,7 @@ from app.llm.intent import load_vocab, parse as parse_intent
 from app.llm.agent import ask as llm_ask
 
 from dotenv import load_dotenv, find_dotenv
-load_dotenv(find_dotenv(usecwd=True), override=False)
+load_dotenv(find_dotenv(usecwd=True), override=True)
 
 # ------------ process state ------------
 
