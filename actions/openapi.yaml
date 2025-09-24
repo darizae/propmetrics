@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: propmetrics-tools
-  version: '0.1'
+  version: '0.3'
   description: Tool-only API for computing aggregates over NRW Bodenrichtwerte Parquet.
     Return numbers; no prose.
 paths:

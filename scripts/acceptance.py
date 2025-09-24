@@ -18,6 +18,23 @@ def main() -> int:
 
     ok = True
     with httpx.Client(base_url=args.base_url) as client:
+        # Step 0: intent -> aggregate prompts
+        prompts = [
+            "Monthly since 2018",
+            "Köln 2011..2030",
+            "By land use since 2018",
+        ]
+        for p in prompts:
+            dtp, rp = post_json(client, "/intent/parse", {"text": p})
+            bodyp = rp.json() if rp.status_code == 200 else {}
+            spec = bodyp.get("spec", {})
+            dta, ra = post_json(client, "/aggregate", spec if spec else {"date_range":{"start":"2011-01-01","end":"2030-12-31"}})
+            bodya = ra.json() if ra.status_code == 200 else {}
+            cond = [rp.status_code == 200, ra.status_code == 200, dta <= args.max_latency_ms, isinstance(bodya.get("row_count"), int)]
+            print(json.dumps({"prompt": p, "intent_ms": round(dtp, 2), "agg_ms": round(dta, 2), "ok": all(cond)}, indent=2))
+            ok = ok and all(cond)
+
+        # Q1
         q1 = {"date_range": {"start": "2018-01-01", "end": "2030-12-31"}, "groupby": "month"}
         dt1, r1 = post_json(client, "/aggregate", q1)
         body1 = r1.json() if r1.status_code == 200 else {}
@@ -26,6 +43,7 @@ def main() -> int:
         print(json.dumps({"query": "Q1_monthly", "latency_ms": round(dt1, 2), "ok": all(conds1)}, indent=2))
         ok = ok and all(conds1)
 
+        # Q2
         q2 = {"date_range": {"start": "2011-01-01", "end": "2030-12-31"},
               "municipality": ["koeln"], "groupby": "none"}
         dt2, r2 = post_json(client, "/aggregate", q2)
@@ -33,10 +51,10 @@ def main() -> int:
         row2 = (body2.get("data") or [{}])[0]
         conds2 = [r2.status_code == 200, dt2 <= args.max_latency_ms,
                   body2.get("row_count", 0) in (0, 1), isinstance(row2.get("zones", 0), int), "filters_echo" in body2]
-        print(
-            json.dumps({"query": "Q2_municipality_summary", "latency_ms": round(dt2, 2), "ok": all(conds2)}, indent=2))
+        print(json.dumps({"query": "Q2_municipality_summary", "latency_ms": round(dt2, 2), "ok": all(conds2)}, indent=2))
         ok = ok and all(conds2)
 
+        # Q3
         q3 = {"date_range": {"start": "2018-01-01", "end": "2030-12-31"}, "groupby": "land_use"}
         dt3, r3 = post_json(client, "/aggregate", q3)
         body3 = r3.json() if r3.status_code == 200 else {}
