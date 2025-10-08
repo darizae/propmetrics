@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>propmetrics UI</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="/" crossorigin>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <h1>propmetrics</h1>
+  <div class="mode">
+    <label><input type="radio" name="mode" value="parser" checked> Parser</label>
+    <label><input type="radio" name="mode" value="llm"> LLM</label>
+  </div>
+</header>
+
+<section class="controls">
+  <div class="row">
+    <label for="prompt">Prompt</label>
+    <input id="prompt" type="text" placeholder="e.g., Monthly since 2018; Köln und Bochum 2011..2024">
+    <button id="run">Run</button>
+    <button id="download" disabled>Download CSV</button>
+  </div>
+
+  <details id="adv" class="advanced">
+    <summary>Advanced (manual override for /aggregate)</summary>
+    <div class="grid">
+      <div>
+        <label for="start">Start</label>
+        <input id="start" type="date" value="2011-01-01">
+      </div>
+      <div>
+        <label for="end">End</label>
+        <input id="end" type="date" value="2030-12-31">
+      </div>
+      <div>
+        <label for="municipality">Municipality (comma-separated)</label>
+        <input id="municipality" type="text" placeholder="köln, bochum">
+      </div>
+      <div>
+        <label for="land_use">Land use codes (comma-separated)</label>
+        <input id="land_use" type="text" placeholder="WA, WR, MI, GE, GI, W, M">
+      </div>
+      <div>
+        <label for="plz">PLZ (comma-separated)</label>
+        <input id="plz" type="text" placeholder="50667, 44787">
+      </div>
+      <div>
+        <label for="groupby">Group by</label>
+        <select id="groupby">
+          <option value="none">none</option>
+          <option value="month">month</option>
+          <option value="municipality">municipality</option>
+          <option value="land_use">land_use</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint">When Advanced is open, the Parser/LLM modes are ignored; the spec below is sent directly to /aggregate and /download.</div>
+  </details>
+</section>
+
+<section class="panels">
+  <div class="panel">
+    <h2>Spec / Echo</h2>
+    <pre id="echo" class="code"></pre>
+  </div>
+  <div class="panel">
+    <h2>Result</h2>
+    <div id="meta" class="meta"></div>
+    <div id="result"></div>
+  </div>
+  <div class="panel error">
+    <h2>Errors</h2>
+    <pre id="errors" class="code"></pre>
+  </div>
+</section>
+
+<div id="spinner" class="spinner hidden">Working…</div>
+<script src="/static/app.js" defer></script>
+</body>
+</html>

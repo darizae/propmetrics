@@ -1,0 +1,48 @@
+:root {
+  --bg: #0b0c10;
+  --fg: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #3b82f6;
+  --panel: #111827;
+  --bad: #ef4444;
+  --ok: #10b981;
+  --border: #1f2937;
+  --code: #0a0f1a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Helvetica, Arial, sans-serif; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+h1 { margin: 0; font-size: 20px; }
+.mode label { margin-right: 12px; }
+
+.controls { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.controls .row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.controls label { font-weight: 600; }
+.controls input[type="text"], .controls input[type="date"], .controls select { width: 100%; padding: 8px 10px; background: #0f172a; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; }
+.controls button { padding: 10px 14px; background: var(--accent); color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+.controls button[disabled] { opacity: .5; cursor: default; }
+.controls #download { background: #1f2937; }
+
+.advanced { margin-top: 12px; }
+.advanced summary { cursor: pointer; color: var(--muted); }
+.advanced .grid { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; }
+.hint { margin-top: 8px; color: var(--muted); font-size: 12px; }
+
+.panels { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 16px; padding: 16px 20px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-height: 120px; }
+.panel h2 { margin: 0 0 8px 0; font-size: 14px; color: var(--muted); }
+
+.code { background: var(--code); border: 1px solid var(--border); padding: 10px; border-radius: 8px; overflow: auto; max-height: 320px; }
+.error { border-color: #3b1d1d; }
+.error h2 { color: #fca5a5; }
+
+.meta { margin-bottom: 8px; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+th { background: #0f172a; font-weight: 600; }
+tbody tr:hover { background: #0b1220; }
+
+.spinner { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.35); backdrop-filter: blur(2px); font-weight: 700; font-size: 16px; }
+.hidden { display: none; }
+.bad { color: var(--bad); }
+.ok { color: var(--ok); }

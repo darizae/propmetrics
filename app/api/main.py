@@ -13,6 +13,7 @@ from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, Response, Request, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.models import AggregateResponse
 from app.cache.redis_cache import get_cache, spec_cache_key
@@ -53,6 +54,10 @@ tags_metadata = [
 ]
 
 app = FastAPI(title="propmetrics", version="0.3", lifespan=lifespan, openapi_tags=tags_metadata)
+
+STATIC_DIR = Path(__file__).resolve().parents[2] / "app" / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
 
 # ------------ CORS (UI only) ------------
 
@@ -308,62 +313,12 @@ def intent_parse(payload: Dict[str, str] = Body(...), request: Request = None) -
     return {"spec": spec, "tokens": {"len": len(text)}}
 
 
-# ------------ UI ------------
-
-_HTML = """<!doctype html><html><head>
-<meta charset="utf-8"><title>propmetrics UI</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,sans-serif;margin:2rem;max-width:900px}
-input,button{font-size:1rem;padding:.6rem .8rem}
-table{border-collapse:collapse;margin-top:1rem;width:100%}
-th,td{border:1px solid #ddd;padding:.5rem;text-align:left}
-code{background:#f6f8fa;padding:2px 4px;border-radius:4px}
-</style></head><body>
-<h1>propmetrics</h1>
-<form id="qform">
-<input id="q" type="text" placeholder="e.g., Monthly since 2018; Köln und Bochum 2011..2024" size="60"/>
-<button type="submit">Run</button>
-<label><input type="checkbox" id="use_llm"> via GPT-3.5</label>
-</form>
-<pre id="echo"></pre>
-<div id="result"></div>
-<script>
-const form=document.getElementById('qform');
-const echo=document.getElementById('echo');
-const res=document.getElementById('result');
-const useLLM=document.getElementById('use_llm');
-form.addEventListener('submit', async (e)=>{
-  e.preventDefault(); res.innerHTML=''; echo.textContent='';
-  const text=document.getElementById('q').value||'';
-  try{
-    if(useLLM.checked){
-      const lr=await fetch('/llm/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text})});
-      if(!lr.ok){res.textContent='LLM error '+lr.status;return;}
-      const body=await lr.json();
-      echo.textContent=JSON.stringify(body.filters_echo||{},null,2);
-      renderTable(body.data||[], body.row_count||0);
-    }else{
-      const pr=await fetch('/intent/parse',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text})});
-      const p=await pr.json(); echo.textContent=JSON.stringify(p.spec,null,2);
-      const ar=await fetch('/aggregate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p.spec)});
-      const body=await ar.json(); renderTable(body.data||[], body.row_count||0);
-    }
-  }catch(err){res.textContent='Error';}
-});
-function renderTable(rows, count){
-  if(!rows.length){res.innerHTML='<p>No rows</p>';return;}
-  const cols=[...new Set(rows.flatMap(r=>Object.keys(r)))];
-  const th=cols.map(c=>'<th>'+c+'</th>').join('');
-  const trs=rows.map(r=>'<tr>'+cols.map(c=>'<td>'+ (r[c] ?? '') +'</td>').join('')+'</tr>').join('');
-  res.innerHTML='<p>Rows: '+count+'</p><table><thead><tr>'+th+'</tr></thead><tbody>'+trs+'</tbody></table>';
-}
-</script></body></html>"""
-
-
 @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
 def ui():
-    return HTMLResponse(_HTML)
+    index = STATIC_DIR / "index.html"
+    if not index.exists():
+        return HTMLResponse("<p>UI not found. Ensure app/static/index.html exists.</p>", status_code=404)
+    return HTMLResponse(index.read_text(encoding="utf-8"))
 
 
 # ------------ LLM front (not exported in Actions) ------------
