@@ -12,7 +12,7 @@ import yaml
 from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, Response, Request, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.models import AggregateResponse
@@ -26,27 +26,20 @@ from app.query.spec import QuerySpec
 
 load_dotenv(find_dotenv(usecwd=True), override=True)
 
-# ------------ process state ------------
-
 _vocab_cache: Dict[str, Any] = {}
 _rate_qps = float(os.getenv("RATE_QPS", "0"))
 _rate_burst = int(os.getenv("RATE_BURST", "10"))
 _rl_buckets: Dict[str, Deque[float]] = defaultdict(deque)
 
 
-# ------------ lifespan ------------
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_dotenv()
     app.state.cache = get_cache()
     init_duck()
-    # lazy vocab
     app.state.vocab_loaded = False
     yield
 
-
-# ------------ app ------------
 
 tags_metadata = [
     {"name": "analytics", "description": "Aggregates over NRW Bodenrichtwerte Parquet"},
@@ -58,6 +51,9 @@ app = FastAPI(title="propmetrics", version="0.3", lifespan=lifespan, openapi_tag
 STATIC_DIR = Path(__file__).resolve().parents[2] / "app" / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR), html=False), name="static")
+
+FAVICON_ICO = STATIC_DIR / "favicon.ico"
+FAVICON_SVG = STATIC_DIR / "favicon.svg"
 
 # ------------ CORS (UI only) ------------
 
@@ -132,7 +128,14 @@ def openapi_yaml() -> Response:
     return Response(content=data, media_type="application/yaml")
 
 
-# ------------ analytics ------------
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon_ico():
+    if FAVICON_ICO.exists():
+        return FileResponse(str(FAVICON_ICO), media_type="image/x-icon")
+    if FAVICON_SVG.exists():
+        return FileResponse(str(FAVICON_SVG), media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="favicon not found")
+
 
 @app.post(
     "/aggregate",
