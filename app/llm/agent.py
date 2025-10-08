@@ -122,10 +122,12 @@ _SYS = (
     "Never emit code blocks. Never mention functions."
 )
 
+
 def _http() -> httpx.Client:
     base = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
     timeout = float(os.getenv("LLM_TIMEOUT_S", "20"))
     return httpx.Client(base_url=base, timeout=timeout)
+
 
 def _cfg() -> Dict[str, Any]:
     model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo-0125").strip()
@@ -147,6 +149,7 @@ def _cfg() -> Dict[str, Any]:
         "max_prompt": max_prompt,
     }
 
+
 def _make_openai_client(cfg: Dict[str, Any]):
     if not cfg["api_key"]:
         raise HTTPException(status_code=400, detail="missing_openai_api_key")
@@ -162,15 +165,19 @@ def _make_openai_client(cfg: Dict[str, Any]):
         kwargs["project"] = cfg["project"]
     return OpenAI(**kwargs)
 
+
 def _call_backend(fn: str, args: Dict[str, Any]) -> Tuple[str, str]:
     with _http() as c:
         if fn == "aggregate":
-            r = c.post("/aggregate", json=args); r.raise_for_status()
+            r = c.post("/aggregate", json=args);
+            r.raise_for_status()
             return "aggregate", json.dumps(r.json(), ensure_ascii=False)
         if fn == "download":
-            r = c.post("/download", json=args); r.raise_for_status()
+            r = c.post("/download", json=args);
+            r.raise_for_status()
             return "download", r.text
     raise HTTPException(400, detail=f"unknown tool {fn}")
+
 
 def _intent_spec(text: str) -> Dict[str, Any]:
     # Deterministic parser result used as authoritative defaults.
@@ -179,6 +186,7 @@ def _intent_spec(text: str) -> Dict[str, Any]:
         if pr.status_code != 200:
             raise HTTPException(400, detail="PARSE_ERROR")
         return pr.json().get("spec", {}) or {}
+
 
 def _merge_args(args: Dict[str, Any], base: Dict[str, Any]) -> Dict[str, Any]:
     # Fill missing fields and widen date window to base end (2030-12-31) when LLM narrows it unintentionally.
@@ -201,9 +209,12 @@ def _merge_args(args: Dict[str, Any], base: Dict[str, Any]) -> Dict[str, Any]:
     out["date_range"] = {"start": start, "end": end}
     return out
 
+
 def ask(text: str) -> Dict[str, Any]:
     cfg = _cfg()
-    if not text or len(text) > cfg["max_prompt"]:
+    if not text:
+        raise HTTPException(status_code=400, detail="empty_prompt")
+    if len(text) > cfg["max_prompt"]:
         raise HTTPException(status_code=400, detail="prompt_too_long")
 
     cache = get_cache()
@@ -213,13 +224,14 @@ def ask(text: str) -> Dict[str, Any]:
         if hit:
             return json.loads(hit)
 
-
     base_spec = _intent_spec(text)
 
     if os.getenv("LLM_MOCK", "0") == "1":
         with _http() as c:
-            ar = c.post("/aggregate", json=base_spec); ar.raise_for_status()
-            out = ar.json(); out["llm"] = {"mode": "mock"}
+            ar = c.post("/aggregate", json=base_spec);
+            ar.raise_for_status()
+            out = ar.json();
+            out["llm"] = {"mode": "mock"}
     else:
         try:
             client = _make_openai_client(cfg)

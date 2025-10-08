@@ -16,6 +16,10 @@ function showError(err) {
   qs('#errors').textContent = JSON.stringify(out, null, 2);
 }
 
+function defaultSpec() {
+  return { date_range: { start: '2011-01-01', end: '2030-12-31' }, groupby: 'none' };
+}
+
 function setDownloadEnabled(on) { qs('#download').disabled = !on; }
 
 function parseCSVFileName(spec) {
@@ -93,7 +97,7 @@ async function runQuery() {
   setDownloadEnabled(false);
   showSpinner(true);
   try {
-    // Manual advanced spec takes precedence
+    // Advanced override
     const adv = specFromAdvanced();
     if (adv) {
       const res = await fetch('/aggregate', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(adv) });
@@ -109,14 +113,28 @@ async function runQuery() {
       return;
     }
 
-    // NL mode: Parser or LLM front
-    const prompt = qs('#prompt').value || '';
+    const prompt = (qs('#prompt').value || '').trim();
     const mode = qsa('input[name="mode"]').find(x => x.checked).value;
+
+    if (!prompt) {
+      const spec = defaultSpec();
+      const ar = await fetch('/aggregate', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(spec) });
+      const body = await ar.json();
+      state.lastSpec = spec;
+      state.lastEcho = body.filters_echo || null;
+      state.lastRows = body.data || [];
+      state.lastRowCount = body.row_count || 0;
+      renderEcho(spec);
+      renderMeta(state.lastRowCount, ar.headers);
+      renderTable(state.lastRows);
+      setDownloadEnabled(true);
+      return;
+    }
 
     if (mode === 'parser') {
       const pr = await fetch('/intent/parse', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ text: prompt }) });
       const p = await pr.json();
-      const spec = p.spec || { date_range: { start: '2011-01-01', end: '2030-12-31' }, groupby: 'none' };
+      const spec = p.spec || defaultSpec();
       renderEcho(spec);
       const ar = await fetch('/aggregate', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(spec) });
       const body = await ar.json();
@@ -135,8 +153,7 @@ async function runQuery() {
       state.lastEcho = body.filters_echo || null;
       state.lastRows = body.data || [];
       state.lastRowCount = body.row_count || 0;
-      // Reconstruct a valid QuerySpec for downloads from filters_echo
-      const spec = specFromEcho(state.lastEcho) || { date_range: { start: '2011-01-01', end: '2030-12-31' }, groupby: 'none' };
+      const spec = specFromEcho(state.lastEcho) || defaultSpec();
       state.lastSpec = spec;
       renderEcho(body.filters_echo || {});
       renderMeta(state.lastRowCount, lr.headers);
@@ -179,4 +196,14 @@ function wire() {
   qs('#prompt').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runQuery(); }});
 }
 
-document.addEventListener('DOMContentLoaded', wire);
+function updateRunEnabled() {
+  const advOpen = qs('#adv').open;
+  const prompt = (qs('#prompt').value || '').trim();
+  qs('#run').disabled = !advOpen && !prompt;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  wire();
+  updateRunEnabled();
+  qs('#prompt').addEventListener('input', updateRunEnabled);
+  qs('#adv').addEventListener('toggle', updateRunEnabled);
+});

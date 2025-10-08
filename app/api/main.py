@@ -223,6 +223,10 @@ def download(spec: QuerySpec, request: Request):
     return resp
 
 
+def _default_spec() -> Dict[str, Any]:
+    return {"date_range": {"start": "2011-01-01", "end": "2030-12-31"}, "groupby": "none"}
+
+
 # ------------ ops ------------
 
 @app.get(
@@ -302,13 +306,12 @@ def admin_refresh(request: Request) -> Dict[str, Any]:
 def intent_parse(payload: Dict[str, str] = Body(...), request: Request = None) -> Dict[str, Any]:
     _rate_limit(request)
     text = (payload.get("text") or "").strip()
-    if not text:
-        raise HTTPException(400, detail={"code": "PARSE_ERROR", "detail": "empty"})
-    # lazy load vocab per-process
     if not getattr(app.state, "vocab_loaded", False):
         _v = load_vocab(get_con())
         _vocab_cache["vocab"] = _v
         app.state.vocab_loaded = True
+    if not text:
+        return {"spec": _default_spec(), "tokens": {"len": 0}, "fallback": True}
     spec = parse_intent(text, _vocab_cache["vocab"])
     return {"spec": spec, "tokens": {"len": len(text)}}
 
