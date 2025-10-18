@@ -1,51 +1,116 @@
-Day 1 targets
-- Stream-download NRW Bodenrichtwerte ZIP to data/raw/de_boris_brw/<YYYYMMDD>/, plus metadata.json; extract shapefile.
-- Normalize to canonical columns and write data/parquet/de_boris_brw/de_boris_brw.parquet.
-- Emit data/meta/de_boris_brw/schema.json with fingerprint.
 
-Commands
-- make install
-- make fetch
-- make normalize
+# propmetrics
 
-Completion checks
-- data/raw/.../<date>/metadata.json exists.
-- data/parquet/de_boris_brw/de_boris_brw.parquet exists and is non-empty.
-- data/meta/de_boris_brw/schema.json and data/parquet/de_boris_brw/SUMMARY.json exist.
+NRW land value (BORIS/BRW) ETL → Parquet → FastAPI tools with optional UI and LLM front.
 
-Day 2 targets
-- DuckDB view over Parquet.
-- POST /aggregate -> {filters_echo,row_count,data[]}
-- POST /download -> CSV of identical result set.
+## Features
 
-Day 3 targets
-- Redis cache and x-cache headers; /health with snapshot + schema fingerprint; tests for cache/health/coercions/median.
+- ETL: stream ZIP, extract Shapefile, normalize to Parquet (`de_boris_brw.parquet`)
+- Analytics API: `/aggregate`, `/download`, `/health`
+- Deterministic intent parser: `/intent/parse` (no external APIs)
+- Minimal UI at `/ui`
+- Optional LLM front `/llm/ask` with tool calls (numbers-only, JSON)
+- Redis caching with canonicalized keys and `x-cache` headers
+- OpenAPI Actions schema: `actions/openapi.yaml`
+- Tests and scripted acceptance
 
-Day 4 targets
-- OpenAPI export; scripted acceptance checks.
+## Quick Start (Docker)
 
-Dataset reference
-- OpenGeodata.NRW Bodenrichtwerte (license: DL-DE-Zero 2.0). See sources JSON and model PDF.
+```bash
+docker run --rm -p 8000:8000 \
+  -e DATA_DIR=/data \
+  -e REDIS_URL=fakeredis:// \
+  -e CORS_ORIGINS=* \
+  -e LLM_MOCK=1 \
+  -v "$PWD/data:/data:ro" \
+  ghcr.io/<your-namespace>/propmetrics:0.3
+````
 
-## 0.3
+Endpoints:
 
-Scope: minimal text→spec→/aggregate layer and a dev UI. Deterministic parsing (no external APIs). Optional LLM front using GPT-3.5 with real tool calls into the local service; tests mock it.
+* UI: [http://127.0.0.1:8000/ui](http://127.0.0.1:8000/ui)
+* Health: `curl -s http://127.0.0.1:8000/health | jq .`
+* Example aggregate:
 
-Run:
-- `make install`
-- `make fetch && make normalize`
-- `make serve` then open `http://127.0.0.1:8000/ui`
-- `make test` (uses fakeredis and disables LLM by default)
-- `make accept`
+```bash
+curl -s http://127.0.0.1:8000/aggregate \
+  -H 'content-type: application/json' \
+  -d '{"date_range":{"start":"2018-01-01","end":"2030-12-31"},"groupby":"month"}' | jq .
+```
 
-LLM front (optional):
-- Set `OPENAI_API_KEY`, optionally `OPENAI_MODEL=gpt-3.5-turbo-0125`
-- `make llm_accept PROMPT='Monthly since 2018'` (calls `/llm/ask` against the running server)
+## Quick Start (Source)
 
-Example prompts:
-- `Monthly since 2018`
-- `Köln und Bochum 2011..2024`
-- `NUTA WA, WR in 2023`
+```bash
+make install
+make fetch
+make normalize
+make serve
+# open http://127.0.0.1:8000/ui
+```
 
-Rate limit:
-- Enable via `RATE_QPS` and `RATE_BURST`; affects `/aggregate`, `/intent/parse`, `/llm/ask`. Disabled when `RATE_QPS=0`.
+Acceptance:
+
+```bash
+make accept
+```
+
+Tests:
+
+```bash
+make test
+```
+
+## API
+
+* `POST /aggregate` → `{filters_echo,row_count,data[]}`
+
+  * filters: `date_range{start,end}`, `municipality[]`, `land_use[]`, `plz[]`, `groupby ∈ {none,month,municipality,land_use}`
+* `POST /download` → CSV of the same result
+* `GET /health` → dataset snapshot + schema fingerprint + cache status
+* `POST /intent/parse` → `{spec,tokens,fallback}` (internal)
+* `POST /llm/ask` → numbers-only JSON using tool calls (optional; requires OpenAI API key)
+* `GET /openapi.yaml` → reduced Actions schema (also in `actions/openapi.yaml`)
+
+## Configuration
+
+Environment variables:
+
+* `DATA_DIR` (required): path with `parquet/de_boris_brw/de_boris_brw.parquet`
+* `REDIS_URL` (`redis://…` or `fakeredis://`)
+* `SERVER_URL` (for schema export)
+* `CORS_ORIGINS` (comma-separated origins for UI)
+* `RATE_QPS`, `RATE_BURST` (optional rate limiting for `/aggregate`, `/intent/parse`, `/llm/ask`)
+* `ADMIN_TOKEN` (for `/admin/refresh`)
+* LLM (optional): `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_PROJECT`, `OPENAI_ORG`, `OPENAI_API_BASE`, `LLM_MOCK=1`
+
+## Data and Schema
+
+Dataset: OpenGeodata NRW BORIS Bodenrichtwerte (DL-DE-Zero 2.0).
+Canonical columns: `municipality`, `land_use`, `plz`, `eur_per_m2`, `stichtag`.
+Schema fingerprint stored at `data/meta/de_boris_brw/schema.json`.
+
+## Development
+
+* OpenAPI export: `make openapi` → `actions/openapi.yaml`
+* Admin refresh (clears cache, remounts Parquet):
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/admin/refresh \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
+```
+
+## Repository Layout
+
+```
+app/         # API, query planner, intent parser, UI static
+scripts/     # acceptance, OpenAPI export, LLM accept
+actions/     # openapi.yaml (reduced, tools-only)
+sources/     # source URLs (NRW BORIS)
+tests/       # API, cache, intent, LLM mock
+artifacts/   # demo clips and screenshots (optional)
+```
+
+## License
+
+Code: MIT (adjust as necessary).
+Data: DL-DE-Zero 2.0.
