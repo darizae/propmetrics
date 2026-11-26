@@ -114,3 +114,7 @@ artifacts/   # demo clips and screenshots (optional)
 
 Code: MIT (adjust as necessary).
 Data: DL-DE-Zero 2.0.
+
+## Agent-assisted setup
+
+[Open the agent setup page](https://darizae.github.io/propmetrics/) or [copy the plain-text prompt](docs/agent-setup.txt) into your coding agent. Review its proposed changes and verification results.
